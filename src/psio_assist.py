@@ -52,7 +52,7 @@ from cue2cu2 import set_cu2_error_log_path, start_cue2cu2
 from db import ensure_database_exists, select, extract_game_cover_blob
 
 REGION_CODES = ['DTLS_', 'SCES_', 'SLES_', 'SLED_', 'SCED_', 'SCUS_', 'SLUS_', 'SLPS_', 'SCAJ_', 'SLKA_', 'SLPM_', 'SCPS_', 'SCPM_', 'PCPX_', 'PAPX_', 'PTPX_', 'LSP0_', 'LSP1_', 'LSP2_', 'LSP9_', 'SIPS_', 'ESPM_', 'SCZS_', 'SPUS_', 'PBPX_', 'LSP_']
-CURRENT_REVISION = 0.8
+CURRENT_REVISION = 0.9
 PROGRESS_STATUS = 'Status:'
 MAX_GAME_NAME_LENGTH = 56
 
@@ -742,23 +742,23 @@ window.grid_rowconfigure(2, weight=0)  # Tools frame
 window.grid_rowconfigure(3, weight=0)  # Progress frame
 
 #*************************************************************
-# Browse Frame
+# Browse Frame (SD Root)
 browse_frame = Labelframe(window, text='SD Root', bootstyle="primary")
 browse_frame.grid(row=0, column=0, padx=15, pady=10, sticky='nsew')
 
 # Configure grid for browse frame
-browse_frame.grid_columnconfigure(0, weight=1)
-browse_frame.grid_columnconfigure(1, weight=0)
-browse_frame.grid_rowconfigure(0, weight=0)
-browse_frame.grid_rowconfigure(1, weight=0)
+browse_frame.grid_columnconfigure(0, weight=1)  # src path label
+browse_frame.grid_columnconfigure(1, weight=0)  # browse button
+browse_frame.grid_rowconfigure(0, weight=1)
+browse_frame.grid_rowconfigure(1, weight=1)
 
 # Label to display the src path
 label_src = Label(browse_frame, text=src_path.get(), borderwidth=2, relief='solid', bootstyle="primary")
-label_src.grid(row=0, column=0, padx=15, pady=5, sticky='ew')
+label_src.grid(row=0, column=0, padx=15, pady=(10,5), sticky='ew')
 
 # Button to browse the filesystem
 button_src_browse = Button(browse_frame, text='Browse', width=10, bootstyle="primary", command=_browse_button_clicked)
-button_src_browse.grid(row=0, column=1, padx=15, pady=5, sticky='e')
+button_src_browse.grid(row=0, column=1, padx=15, pady=(10,5), sticky='ew')
 
 # Progress bar and scan button
 progress_bar_indeterminate = ttk.Floodgauge(
@@ -768,10 +768,10 @@ progress_bar_indeterminate = ttk.Floodgauge(
     mode='indeterminate',
     bootstyle="primary"
 )
-progress_bar_indeterminate.grid(row=1, column=0, padx=15, pady=5, sticky='ew')
+progress_bar_indeterminate.grid(row=1, column=0, padx=15, pady=(5,10), sticky='ew')
 
 button_src_scan = Button(browse_frame, text='Scan', width=10, command=_scan_button_clicked, state=DISABLED)
-button_src_scan.grid(row=1, column=1, padx=15, pady=5, sticky='e')
+button_src_scan.grid(row=1, column=1, padx=15, pady=(5,10), sticky='ew')
 
 #*************************************************************
 # Game List Frame
@@ -821,38 +821,29 @@ tools_frame.grid(row=2, column=0, padx=15, pady=10, sticky='ew')
 tools_frame.grid_columnconfigure(0, weight=1)
 tools_frame.grid_columnconfigure(1, weight=1)
 tools_frame.grid_columnconfigure(2, weight=1)
+tools_frame.grid_rowconfigure(0, weight=1)
+tools_frame.grid_rowconfigure(1, weight=1)
 
-# Create frames for each column to center the checkboxes
-left_column = ttk.Frame(tools_frame)
-left_column.grid(row=0, column=0, rowspan=2, sticky='nsew')
-left_column.grid_columnconfigure(0, weight=1)
+# Left column toggles
+checkbox_merge_bin = Checkbutton(tools_frame, text='Merge Bin Files', bootstyle="round-toggle", takefocus=0, variable=merge_bin_files, command=_checkbox_changed)
+checkbox_merge_bin.grid(row=0, column=0, padx=15, pady=(10,2), sticky='n')
 
-middle_column = ttk.Frame(tools_frame)
-middle_column.grid(row=0, column=1, rowspan=2, sticky='nsew')
-middle_column.grid_columnconfigure(0, weight=1)
+checkbox_generate_cue = Checkbutton(tools_frame, text='CU2 For All', bootstyle="round-toggle", takefocus=0, variable=force_cu2, command=_checkbox_changed)
+checkbox_generate_cue.grid(row=1, column=0, padx=15, pady=(2,10), sticky='n')
 
-right_column = ttk.Frame(tools_frame)
-right_column.grid(row=0, column=2, rowspan=2, sticky='nsew')
-right_column.grid_columnconfigure(0, weight=1)
+# Middle column toggles
+checkbox_limit_name = Checkbutton(tools_frame, text='Fix Invalid Name', bootstyle="round-toggle", takefocus=0, variable=validate_game_name, command=_checkbox_changed)
+checkbox_limit_name.grid(row=0, column=1, padx=15, pady=(10,2), sticky='n')
 
-# Checkboxes for options - now in their respective column frames
-checkbox_merge_bin = Checkbutton(left_column, text='Merge Bin Files', bootstyle="round-toggle", takefocus=0, variable=merge_bin_files, command=_checkbox_changed)
-checkbox_merge_bin.grid(row=0, column=0, padx=5, pady=2)
+checkbox_auto_rename = Checkbutton(tools_frame, text='Auto Rename', bootstyle="round-toggle", takefocus=0, variable=auto_rename, command=_checkbox_changed)
+checkbox_auto_rename.grid(row=1, column=1, padx=15, pady=(2,10), sticky='n')
 
-checkbox_generate_cue = Checkbutton(left_column, text='CU2 For All', bootstyle="round-toggle", takefocus=0, variable=force_cu2, command=_checkbox_changed)
-checkbox_generate_cue.grid(row=1, column=0, padx=5, pady=2)
+# Right column toggles
+checkbox_add_art = Checkbutton(tools_frame, text='Add Cover Art', bootstyle="round-toggle", takefocus=0, variable=add_cover_art, command=_checkbox_changed)
+checkbox_add_art.grid(row=0, column=2, padx=15, pady=(10,2), sticky='n')
 
-checkbox_limit_name = Checkbutton(middle_column, text='Fix Invalid Name', bootstyle="round-toggle", takefocus=0, variable=validate_game_name, command=_checkbox_changed)
-checkbox_limit_name.grid(row=0, column=0, padx=5, pady=2)
-
-checkbox_auto_rename = Checkbutton(middle_column, text='Auto Rename', bootstyle="round-toggle", takefocus=0, variable=auto_rename, command=_checkbox_changed)
-checkbox_auto_rename.grid(row=1, column=0, padx=5, pady=2)
-
-checkbox_add_art = Checkbutton(right_column, text='Add Cover Art', bootstyle="round-toggle", takefocus=0, variable=add_cover_art, command=_checkbox_changed)
-checkbox_add_art.grid(row=0, column=0, padx=5, pady=2)
-
-checkbox_create_multi_disc = Checkbutton(right_column, text='Create Multi-Disc', bootstyle="round-toggle", takefocus=0, variable=create_multi_disc, command=_checkbox_changed)
-checkbox_create_multi_disc.grid(row=1, column=0, padx=5, pady=2)
+checkbox_create_multi_disc = Checkbutton(tools_frame, text='Create Multi-Disc', bootstyle="round-toggle", takefocus=0, variable=create_multi_disc, command=_checkbox_changed)
+checkbox_create_multi_disc.grid(row=1, column=2, padx=15, pady=(2,10), sticky='n')
 
 #*************************************************************
 # Progress Frame
@@ -862,8 +853,8 @@ progress_frame.grid(row=3, column=0, padx=15, pady=10, sticky='ew')
 # Configure grid for progress frame
 progress_frame.grid_columnconfigure(0, weight=1)
 progress_frame.grid_columnconfigure(1, weight=0)
-progress_frame.grid_rowconfigure(0, weight=0)
-progress_frame.grid_rowconfigure(1, weight=0)
+progress_frame.grid_rowconfigure(0, weight=1)
+progress_frame.grid_rowconfigure(1, weight=1)
 
 # Progress bar
 progress_bar = Floodgauge(
@@ -873,15 +864,15 @@ progress_bar = Floodgauge(
     mode='determinate',
     bootstyle="primary"
 )
-progress_bar.grid(row=0, column=0, padx=15, pady=5, sticky='ew')
+progress_bar.grid(row=0, column=0, padx=15, pady=(10,5), sticky='ew')
 
 # Start button
 button_start = Button(progress_frame, text='Start', width=10, command=_start_button_clicked, state=DISABLED)
-button_start.grid(row=0, column=1, padx=15, pady=5, sticky='e')
+button_start.grid(row=0, column=1, padx=15, pady=(10,5), sticky='ew')
 
 # Progress label
 label_progress = Label(progress_frame, text=PROGRESS_STATUS, bootstyle="primary")
-label_progress.grid(row=1, column=0, columnspan=2, padx=15, pady=5, sticky='ew')
+label_progress.grid(row=1, column=0, columnspan=2, padx=15, pady=(5,10), sticky='ew')
 
 label_progress.after(1000, ensure_database_exists)
 
