@@ -74,94 +74,103 @@ set_binmerge_error_log_path(error_log_file)
 # *****************************************************************************************************************
 # Function that processes the games
 def _process_games():
-	for game in game_list:
-		#_print_game_details(game)
+    total_games = len(game_list)
+    covers_not_found = 0
+    for index, game in enumerate(game_list):
+        game_id = game.id
+        if not game_id:
+            print(f"WARNING: Game ID is None for {game.cue_sheet.game_name}. Skipping this game.")
+            continue
 
-		game_id = game.id
-		game_name = game.cue_sheet.game_name
+        game_name = game.cue_sheet.game_name
 
-		game_full_path = join(game.directory_path, game.directory_name)
-		cue_full_path = join(game_full_path, game.cue_sheet.file_name)
+        game_full_path = join(game.directory_path, game.directory_name)
+        cue_full_path = join(game_full_path, game.cue_sheet.file_name)
 
-		label_progress.configure(text = f'{PROGRESS_STATUS} Processing - {game_name}')
+        label_progress.configure(text=f'{PROGRESS_STATUS} In Progress - {game_name}')
 
-		print(f'GAME_ID: {game_id}')
-		print(f'GAME_NAME: {game_name}')
-		print(f'GAME_PATH: {game_full_path}')
-		print(f'CUE_PATH: {cue_full_path}')
+        print(f'GAME_ID: {game_id}')
+        print(f'GAME_NAME: {game_name}')
+        print(f'GAME_PATH: {game_full_path}')
+        print(f'CUE_PATH: {cue_full_path}')
 
-		if merge_bin_files.get() and len(game.cue_sheet.bin_files) > 1:
-			print('MERGING BIN FILES...')
-			label_progress.configure(text = f'{PROGRESS_STATUS} Merging bin files - {game_name}')
-			_merge_bin_files(game, game_name, game_full_path, cue_full_path)
-			start_cue2cu2(cue_full_path, f'{game_name}.bin')
+        if merge_bin_files.get() and len(game.cue_sheet.bin_files) > 1:
+            print('MERGING BIN FILES...')
+            label_progress.configure(text=f'{PROGRESS_STATUS} In Progress - Merging bin files - {game_name}')
+            _merge_bin_files(game, game_name, game_full_path, cue_full_path)
+            start_cue2cu2(cue_full_path, f'{game_name}.bin')
 
-		if force_cu2.get() and not game.cu2_present:
-			print('GENERATING CU2...')
-			label_progress.configure(text = f'{PROGRESS_STATUS} Generating cu2 file - {game_name}')
-			start_cue2cu2(cue_full_path, f'{game_name}.bin')
+        if force_cu2.get() and not game.cu2_present:
+            print('GENERATING CU2...')
+            label_progress.configure(text=f'{PROGRESS_STATUS} In Progress - Generating cu2 file - {game_name}')
+            start_cue2cu2(cue_full_path, f'{game_name}.bin')
 
-		if auto_rename.get():
-			print('RENAMING THE GAME FILES...')
-			label_progress.configure(text = f'{PROGRESS_STATUS} Renaming - {game_name}')
-			redump_game_name = _game_name_validator(_get_redump_name(game_id))
-			_rename_game(game_full_path, game_name, redump_game_name)
+        if auto_rename.get():
+            print('RENAMING THE GAME FILES...')
+            label_progress.configure(text=f'{PROGRESS_STATUS} In Progress - Renaming - {game_name}')
+            try:
+                redump_game_name = _game_name_validator(_get_redump_name(game_id))
+                if redump_game_name:
+                    _rename_game(game_full_path, game_name, redump_game_name)
+            except Exception as e:
+                print(f"WARNING: Could not rename game {game_name}. Skipping this game. Error: {e}")
 
-		if validate_game_name.get() and not auto_rename.get():
-			if len(game_name) > MAX_GAME_NAME_LENGTH or '.' in game_name:
-				print('VALIDATING THE GAME NAME...')
-				label_progress.configure(text = f'{PROGRESS_STATUS} Validating name - {game_name}')
-				new_game_name = _game_name_validator(game)
-				print(f'new_game_name: {new_game_name}')
-				if new_game_name != game_name:
-					_rename_game(game_full_path, game_name, new_game_name)
+        if validate_game_name.get() and not auto_rename.get():
+            if len(game_name) > MAX_GAME_NAME_LENGTH or '.' in game_name:
+                print('VALIDATING THE GAME NAME...')
+                label_progress.configure(text=f'{PROGRESS_STATUS} In Progress - Validating name - {game_name}')
+                new_game_name = _game_name_validator(game_name)
+                print(f'new_game_name: {new_game_name}')
+                if new_game_name != game_name:
+                    _rename_game(game_full_path, game_name, new_game_name)
 
-		if add_cover_art.get() and not game.cover_art_present:
-			print('ADDING THE GAME COVER ART...')
-			label_progress.configure(text = f'{PROGRESS_STATUS} Adding cover art - {game_name}')
-			_copy_game_cover(game_full_path, game_id, game_name)
+        if add_cover_art.get() and not game.cover_art_present:
+            try:
+                print('ADDING THE GAME COVER ART...')
+                label_progress.configure(text=f'{PROGRESS_STATUS} In Progress - Adding cover art - {game_name}')
+                _copy_game_cover(game_full_path, game_id, game_name)
+            except Exception as e:
+                print(f"WARNING: Could not add cover art for {game_name}. Skipping this game. Error: {e}")
+                covers_not_found += 1
+
+        # Update the progress bar
+        progress = int((index + 1) / total_games * 100)
+        _update_progress_bar(progress)
+
+    label_progress.configure(text=f'{PROGRESS_STATUS} Done')
 
 
-
-	#if create_multi_disc:
-
-
-
-
-		print()
-
-	label_progress.configure(text = PROGRESS_STATUS)
 # *****************************************************************************************************************
 
 
 # *****************************************************************************************************************
 # Function to merge multi-bin files
 def _merge_bin_files(game, game_name, game_full_path, cue_full_path):
-	# Create a temp directory to store the merged bin file
-	temp_game_dir = join(game_full_path, 'temp_dir')
-	if not exists(temp_game_dir):
-		try:
-			mkdir(temp_game_dir)
-		except OSError as error:
-			pass
-	if exists(temp_game_dir):
-		label_progress.configure(text = f'{PROGRESS_STATUS} Merging bin files')
-		start_bin_merge(cue_full_path, game_name, temp_game_dir)
+    # Create a temp directory to store the merged bin file
+    temp_game_dir = join(game_full_path, 'temp_dir')
+    if not exists(temp_game_dir):
+        try:
+            mkdir(temp_game_dir)
+        except OSError as error:
+            pass
+    if exists(temp_game_dir):
+        label_progress.configure(text=f'{PROGRESS_STATUS} Merging bin files')
+        start_bin_merge(cue_full_path, game_name, temp_game_dir)
 
-		# If the bin files have been merged and the new cue file has been generated
-		temp_bin_path = join(temp_game_dir, f'{game_name}.bin')
-		temp_cue_path = join(temp_game_dir, f'{game_name}.cue')
-		if exists(temp_bin_path) and exists(temp_cue_path):
-			# Delete the original cue_sheet and bin files
-			remove(cue_full_path)
-			for orginal_bin_file in game.cue_sheet.bin_files:
-				remove(orginal_bin_file.file_path)
+        # If the bin files have been merged and the new cue file has been generated
+        temp_bin_path = join(temp_game_dir, f'{game_name}.bin')
+        temp_cue_path = join(temp_game_dir, f'{game_name}.cue')
+        if exists(temp_bin_path) and exists(temp_cue_path):
+            # Delete the original cue_sheet and bin files
+            remove(cue_full_path)
+            for original_bin_file in game.cue_sheet.bin_files:
+                remove(join(game_full_path, original_bin_file.file_name))
 
-			# Move the newly merged bin_file and cue_sheet back into the game directory
-			move(temp_bin_path, join(game_full_path, f'{game_name}.bin'))
-			move(temp_cue_path, join(game_full_path, f'{game_name}.cue'))
+            # Move the newly merged bin_file and cue_sheet back into the game directory
+            move(temp_bin_path, join(game_full_path, f'{game_name}.bin'))
+            move(temp_cue_path, join(game_full_path, f'{game_name}.cue'))
 
-		rmtree(temp_game_dir)
+        rmtree(temp_game_dir)
 # *****************************************************************************************************************
 
 
@@ -198,17 +207,15 @@ def _rename_game(game_full_path, game_name, new_game_name):
 
 
 # *****************************************************************************************************************
-# Function to validate the game name (ensure irt is not too long and does not contain periods)
-def _game_name_validator(game):
-	game_name = game.cue_sheet.game_name
-	if '.' in game_name:
-		game_name = game_name.replace('.', '_')
+# Function to validate the game name (ensure it is not too long and does not contain periods)
+def _game_name_validator(game_name):
+    if '.' in game_name:
+        game_name = game_name.replace('.', '_')
 
-	if len(game_name) > MAX_GAME_NAME_LENGTH:
-		game_name = game_name[:MAX_GAME_NAME_LENGTH]
+    if len(game_name) > MAX_GAME_NAME_LENGTH:
+        game_name = game_name[:MAX_GAME_NAME_LENGTH]
 
-	game.cue_sheet.new_name = game_name
-	return game_name
+    return game_name
 # *****************************************************************************************************************
 
 
@@ -264,26 +271,26 @@ def _generate_multidisc_file(game_dir):
 # *****************************************************************************************************************
 # Function to get the game name (using names from redump and the psx data-centre)
 def _get_redump_name(game_id):
-	response = select(f'''SELECT name FROM games WHERE game_id = "{game_id.replace('-','_')}";''')
-	if response is not None and response != []:
-		game_name = response[0][0]
+    response = select(f'''SELECT name, disc_number FROM games WHERE game_id = "{game_id.replace('-','_')}";''')
+    if response is not None and response != []:
+        game_name, disc_number = response[0]
 
-		# Ensure that the game name (including disc number and extension) is not more than 60 chars
-		if validate_game_name.get():
-			if int(line[2]) > 0:
-				if len(game_name) <= 47:
-					return f'{game_name} (Disc {line[2]})'
-				else:
-					return f'{game_name[:47]} (Disc {line[2]})'
-			else:
-				if len(game_name) <= 47:
-					return game_name
-				else:
-					return f'{game_name[:47]}'
-		else:
-			return game_name
+        # Ensure that the game name (including disc number and extension) is not more than 60 chars
+        if validate_game_name.get():
+            if int(disc_number) > 0:
+                if len(game_name) <= 47:
+                    return f'{game_name} (Disc {disc_number})'
+                else:
+                    return f'{game_name[:47]} (Disc {disc_number})'
+            else:
+                if len(game_name) <= 47:
+                    return game_name
+                else:
+                    return f'{game_name[:47]}'
+        else:
+            return game_name
 
-	return ''
+    return ''
 # *****************************************************************************************************************
 
 
@@ -537,6 +544,7 @@ def _poo():
 
 
 # *****************************************************************************************************************
+# Update the _display_game_list function to include the new column with relative directory path
 def _display_game_list():
 	bools = ('No','Yes')
 	for count, game in enumerate(game_list):
@@ -547,7 +555,8 @@ def _display_game_list():
 		name_valid = bools[len(game.cue_sheet.game_name) <= MAX_GAME_NAME_LENGTH and '.' not in game.cue_sheet.game_name]
 		cu2_present = bools[game.cu2_present]
 		bmp_present = bools[game.cover_art_present]
-		treeview_game_list.insert(parent='', index=count, iid=count, text='', values=(game_id, game_name, disc_number, number_of_bins, name_valid, cu2_present, bmp_present))
+		relative_game_directory = join(Path(game.directory_path).name, game.directory_name)  # Relative directory path
+		treeview_game_list.insert(parent='', index=count, iid=count, text='', values=(game_id, game_name, disc_number, number_of_bins, name_valid, cu2_present, bmp_present, relative_game_directory))  # Include the new field
 # *****************************************************************************************************************
 
 
@@ -604,13 +613,17 @@ def _update_window():
 # *****************************************************************************************************************
 # Scan button click event
 def _scan_button_clicked():
-	button_src_scan['state'] = 'disabled'
-	progress_bar_indeterminate.start(20)
+    button_src_scan['state'] = 'disabled'
+    progress_bar_indeterminate.start(20)
 
-	_parse_game_list()
+    _parse_game_list()
 
-	if force_cu2.get() or merge_bin_files.get() or add_cover_art.get() or validate_game_name.get() or auto_rename.get():
-		button_start['state'] = 'normal'
+    if force_cu2.get() or merge_bin_files.get() or add_cover_art.get() or validate_game_name.get() or auto_rename.get():
+        button_start['state'] = 'normal'
+    else:
+        progress_bar_indeterminate.stop()
+        progress_bar['value'] = 100  # Set progress bar to 100% when scan is complete
+        label_progress.configure(text=f'{PROGRESS_STATUS} Scan complete')
 # *****************************************************************************************************************
 
 
@@ -619,7 +632,7 @@ def _scan_button_clicked():
 def _browse_button_clicked():
 
 	# Open the fieldialog
-	selected_path = filedialog.askdirectory(initialdir = '/', title = 'Select Game Directory')
+	selected_path = filedialog.askdirectory(initialdir = '/media/gabriel/PSIO', title = 'Select Game Directory')
 
 	# Update the label
 	src_path.set(selected_path)
@@ -794,7 +807,7 @@ game_list_frame = Labelframe(window, text='Files', bootstyle="primary")
 game_list_frame.place(x=15, y=140, width=770, height=350)
 
 treeview_game_list = Treeview(window, bootstyle='primary')
-treeview_game_list['columns']=('ID', 'Name', 'Disc Number', 'Bin Files', 'Name Valid', 'CU2', 'BMP')
+treeview_game_list['columns'] = ('ID', 'Name', 'Disc Number', 'Bin Files', 'Name Valid', 'CU2', 'BMP', 'Directory')
 treeview_game_list.column('#0', width=0, stretch=NO)
 treeview_game_list.column('ID', anchor=CENTER, width=75)
 treeview_game_list.column('Name', anchor=CENTER, width=350)
@@ -803,6 +816,7 @@ treeview_game_list.column('Bin Files', anchor=CENTER, width=60)
 treeview_game_list.column('Name Valid', anchor=CENTER, width=75)
 treeview_game_list.column('CU2', anchor=CENTER, width=40)
 treeview_game_list.column('BMP', anchor=CENTER, width=40)
+treeview_game_list.column('Directory', anchor=CENTER, width=200)  # New column for directory
 
 treeview_game_list.heading('#0', text='', anchor=CENTER)
 treeview_game_list.heading('ID', text='ID', anchor=CENTER)
@@ -812,6 +826,7 @@ treeview_game_list.heading('Bin Files', text='Bin Files', anchor=CENTER)
 treeview_game_list.heading('Name Valid', text='Name Valid', anchor=CENTER)
 treeview_game_list.heading('CU2', text='CU2', anchor=CENTER)
 treeview_game_list.heading('BMP', text='BMP', anchor=CENTER)
+treeview_game_list.heading('Directory', text='Directory', anchor=CENTER)  # New column for directory
 
 scrollbar_game_list = Scrollbar(window, bootstyle="primary-round", orient=ttk.VERTICAL, command=treeview_game_list.yview)
 treeview_game_list.configure(yscroll=scrollbar_game_list.set)

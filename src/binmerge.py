@@ -84,7 +84,7 @@ def _sectors_to_cuestamp(sectors):
 
 # **********************************************************************************************************
 def _cuestamp_to_sectors(stamp):
-	m = match('(\d+):(\d+):(\d+)', stamp)
+	m = match(r'(\d+):(\d+):(\d+)', stamp)
 	minutes = int(m.group(1))
 	seconds = int(m.group(2))
 	fields = int(m.group(3))
@@ -159,7 +159,7 @@ def read_cue_file(cue_path):
 
 	f = open(cue_path, 'r')
 	for line in f:
-		m = search('FILE "?(.*?)"? BINARY', line)
+		m = search(r'FILE "?(.*?)"? BINARY', line)
 		if m:
 			this_path = join(dirname(cue_path), m.group(1))
 			file_available = (isfile(this_path) or access(this_path, R_OK))
@@ -179,24 +179,22 @@ def read_cue_file(cue_path):
 
 			continue
 
-		m = search('TRACK (\d+) ([^\s]*)', line)
+		m = search(r'TRACK (\d+) ([^\s]*)', line)
 		if m and this_file:
 			this_track = Track(int(m.group(1)), m.group(2))
 			this_file.tracks.append(this_track)
 			continue
 
-		m = search('INDEX (\d+) (\d+:\d+:\d+)', line)
+		m = search(r'INDEX (\d+) (\d+:\d+:\d+)', line)
 		if m and this_track:
-			this_track.indexes.append({'id': int(m.group(1)), 'stamp': m.group(2), 'file_offset':_cuestamp_to_sectors(m.group(2))})
+			this_track.indexes.append({'id': int(m.group(1)), 'stamp': m.group(2), 'file_offset': _cuestamp_to_sectors(m.group(2))})
 			continue
 
 	if bin_files_missing:
-		#raise BinFilesMissingException
 		_log_error('ERROR', f'file does not exist: {line}')
 		return []
 
 	if len(files) == 1:
-		# only 1 file, assume splitting, calc sectors of each
 		next_item_offset = files[0].size // Track.globalBlocksize
 		for t in reversed(files[0].tracks):
 			t.sectors = next_item_offset - t.indexes[0]["file_offset"]
