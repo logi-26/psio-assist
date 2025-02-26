@@ -81,6 +81,3 @@ This project requires Python 3 and the following Python packages:
      *It is recommended to have at least the bin files merged due to PSIO compatibility issues.*
    - Click on the **Start** button to process the desired options.
    - The progress bar will display the progress of the application.
-
-3. **After processing**:
-   - Just copy the game folders to the SD Card and you are good to go!
