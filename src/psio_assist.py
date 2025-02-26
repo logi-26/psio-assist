@@ -56,8 +56,39 @@ CURRENT_REVISION = 0.2
 PROGRESS_STATUS = 'Status:'
 MAX_GAME_NAME_LENGTH = 56
 
+# Global variables
 game_list = []
 covers_path = None
+
+# *****************************************************************************************************************
+def _get_stored_theme():
+    try:
+        with open(CONFIG_FILE_PATH) as config_file:
+            data = load(config_file)
+            return data['theme']
+    except:
+        return 'darkly'  # default theme if config file doesn't exist
+# *****************************************************************************************************************
+
+# Create the main window
+window = ttk.Window(title=f'PSIO Game Assistant v{CURRENT_REVISION}', themename=_get_stored_theme(), size=[800,710])
+style = Style()
+
+# Create Tkinter variables after window initialization
+src_path = StringVar(value='')
+merge_bin_files = BooleanVar(value=False)
+force_cu2 = BooleanVar(value=False)
+validate_game_name = BooleanVar(value=False)
+auto_rename = BooleanVar(value=False)
+add_cover_art = BooleanVar(value=False)
+create_multi_disc = BooleanVar(value=False)
+
+# Configure grid weight for main window
+window.grid_columnconfigure(0, weight=1)
+window.grid_rowconfigure(0, weight=0)  # Browse frame
+window.grid_rowconfigure(1, weight=1)  # Game list frame
+window.grid_rowconfigure(2, weight=0)  # Tools frame
+window.grid_rowconfigure(3, weight=0)  # Progress frame
 
 # Get the directory paths based on the scripts location
 script_root_dir = Path(abspath(dirname(argv[0])))
@@ -632,7 +663,7 @@ def _scan_button_clicked():
 def _browse_button_clicked():
 
 	# Open the fieldialog
-	selected_path = filedialog.askdirectory(initialdir = '/media/gabriel/PSIO', title = 'Select Game Directory')
+	selected_path = filedialog.askdirectory(initialdir = '/', title = 'Select Game Directory')
 
 	# Update the label
 	src_path.set(selected_path)
@@ -670,15 +701,6 @@ def _checkbox_changed():
 
 
 # *****************************************************************************************************************
-def _get_stored_theme():
-	data = None
-	with open(CONFIG_FILE_PATH) as config_file:
-		data = load(config_file)
-	return data['theme']
-# *****************************************************************************************************************
-
-
-# *****************************************************************************************************************
 def _store_selected_theme(theme_name):
 	with open(CONFIG_FILE_PATH, mode="w") as config_file:
 		config_file.write(dumps({"theme": theme_name}))
@@ -701,112 +723,51 @@ def _switch_theme(theme_name):
 # Run the GUI
 # *************************************************
 
-# Create the main window
-window = ttk.Window(title=f'PSIO Game Assistant v{CURRENT_REVISION}',themename=_get_stored_theme(), size=[800,710], resizable=[False, False])
-style = Style()
-
-#print(style.theme_names())
-
-src_path = StringVar()
-dest_path = StringVar()
-force_cu2 = BooleanVar()
-merge_bin_files = BooleanVar()
-add_cover_art = BooleanVar()
-validate_game_name = BooleanVar()
-auto_rename = BooleanVar()
-auto_patch = BooleanVar()
-create_multi_disc = BooleanVar()
-force_cu2.set(False)
-merge_bin_files.set(False)
-add_cover_art.set(False)
-validate_game_name.set(False)
-auto_rename.set(False)
-auto_patch.set(False)
-create_multi_disc.set(False)
-
-# create a menubar
-menubar = Menu(window)
-window.config(menu=menubar)
-
-# create the file_menu
-file_menu = Menu(
-	menubar,
-	tearoff=0
-)
-
-sub_menu = Menu(file_menu, tearoff=0)
-sub_menu.add_command(label='cyborg', command=lambda: _switch_theme('cyborg'))
-sub_menu.add_command(label='darkly', command=lambda: _switch_theme('darkly'))
-sub_menu.add_command(label='vapor', command=lambda: _switch_theme('vapor'))
-sub_menu.add_command(label='superhero', command=lambda: _switch_theme('superhero'))
-sub_menu.add_command(label='solar', command=lambda: _switch_theme('solar'))
-sub_menu.add_command(label='morph', command=lambda: _switch_theme('morph'))
-sub_menu.add_command(label='sandstone', command=lambda: _switch_theme('sandstone'))
-sub_menu.add_command(label='simplex', command=lambda: _switch_theme('simplex'))
-sub_menu.add_command(label='yeti', command=lambda: _switch_theme('yeti'))
-
-# Add the File menu to the menubar
-file_menu.add_cascade(
-	label="Color Themes",
-	menu=sub_menu
-)
-
-# Add Exit menu item
-file_menu.add_separator()
-file_menu.add_command(
-	label='Exit',
-	command=window.destroy
-)
-
-menubar.add_cascade(
-	label="File",
-	menu=file_menu,
-	underline=0
-)
-# Create the Help menu
-help_menu = Menu(
-	menubar,
-	tearoff=0
-)
-
-help_menu.add_command(label='About')
-
-# Add the Help menu to the menubar
-menubar.add_cascade(
-	label="Help",
-	menu=help_menu,
-	underline=0
-)
+# Configure grid weight for main window
+window.grid_columnconfigure(0, weight=1)
+window.grid_rowconfigure(0, weight=0)  # Browse frame
+window.grid_rowconfigure(1, weight=1)  # Game list frame
+window.grid_rowconfigure(2, weight=0)  # Tools frame
+window.grid_rowconfigure(3, weight=0)  # Progress frame
 
 #*************************************************************
-
+# Browse Frame
 browse_frame = Labelframe(window, text='SD Root', bootstyle="primary")
-browse_frame.place(x=15, y=10, width=770, height=110)
+browse_frame.grid(row=0, column=0, padx=15, pady=10, sticky='nsew')
+
+# Configure grid for browse frame
+browse_frame.grid_columnconfigure(0, weight=1)
+browse_frame.grid_columnconfigure(1, weight=0)
+browse_frame.grid_rowconfigure(0, weight=0)
+browse_frame.grid_rowconfigure(1, weight=0)
 
 # Label to display the src path
-label_src = Label(window, text=src_path.get(), width = 60, borderwidth=2, relief='solid', bootstyle="primary")
-label_src.place(x=30, y=35, width=600, height=30)
+label_src = Label(browse_frame, text=src_path.get(), borderwidth=2, relief='solid', bootstyle="primary")
+label_src.grid(row=0, column=0, padx=15, pady=5, sticky='ew')
 
-# Button to browse the filesystem and select the src path
-button_src_browse = Button(window, text='Browse', bootstyle="primary", command = _browse_button_clicked)
-button_src_browse.place(x=640, y=35, width=130, height=30)
+# Button to browse the filesystem
+button_src_browse = Button(browse_frame, text='Browse', width=10, bootstyle="primary", command=_browse_button_clicked)
+button_src_browse.grid(row=0, column=1, padx=15, pady=5, sticky='e')
 
-progress_bar_indeterminate = ttk.Floodgauge(font=(None, 14, 'bold'), mask='', mode='indeterminate')
-progress_bar_indeterminate.place(x=30, y=75, width=600, height=30)
+# Progress bar and scan button
+progress_bar_indeterminate = ttk.Floodgauge(browse_frame, font=(None, 14, 'bold'), mask='', mode='indeterminate')
+progress_bar_indeterminate.grid(row=1, column=0, padx=15, pady=5, sticky='ew')
 
-# Button to scan the game files
-button_src_scan = Button(window, text='Scan', command = _scan_button_clicked, state=DISABLED)
-button_src_scan.place(x=640, y=75, width=130, height=30)
-
-#progress_bar_indeterminate.lower()
-#button_src_scan.lower()
+button_src_scan = Button(browse_frame, text='Scan', width=10, command=_scan_button_clicked, state=DISABLED)
+button_src_scan.grid(row=1, column=1, padx=15, pady=5, sticky='e')
 
 #*************************************************************
-
+# Game List Frame
 game_list_frame = Labelframe(window, text='Files', bootstyle="primary")
-game_list_frame.place(x=15, y=140, width=770, height=350)
+game_list_frame.grid(row=1, column=0, padx=15, pady=10, sticky='nsew')
 
-treeview_game_list = Treeview(window, bootstyle='primary')
+# Configure grid for game list frame
+game_list_frame.grid_columnconfigure(0, weight=1)
+game_list_frame.grid_columnconfigure(1, weight=0)
+game_list_frame.grid_rowconfigure(0, weight=1)
+
+# Treeview setup
+treeview_game_list = Treeview(game_list_frame, bootstyle='primary')
 treeview_game_list['columns'] = ('ID', 'Name', 'Disc Number', 'Bin Files', 'Name Valid', 'CU2', 'BMP', 'Directory')
 treeview_game_list.column('#0', width=0, stretch=NO)
 treeview_game_list.column('ID', anchor=CENTER, width=75)
@@ -816,7 +777,7 @@ treeview_game_list.column('Bin Files', anchor=CENTER, width=60)
 treeview_game_list.column('Name Valid', anchor=CENTER, width=75)
 treeview_game_list.column('CU2', anchor=CENTER, width=40)
 treeview_game_list.column('BMP', anchor=CENTER, width=40)
-treeview_game_list.column('Directory', anchor=CENTER, width=200)  # New column for directory
+treeview_game_list.column('Directory', anchor=CENTER, width=200)
 
 treeview_game_list.heading('#0', text='', anchor=CENTER)
 treeview_game_list.heading('ID', text='ID', anchor=CENTER)
@@ -826,54 +787,78 @@ treeview_game_list.heading('Bin Files', text='Bin Files', anchor=CENTER)
 treeview_game_list.heading('Name Valid', text='Name Valid', anchor=CENTER)
 treeview_game_list.heading('CU2', text='CU2', anchor=CENTER)
 treeview_game_list.heading('BMP', text='BMP', anchor=CENTER)
-treeview_game_list.heading('Directory', text='Directory', anchor=CENTER)  # New column for directory
+treeview_game_list.heading('Directory', text='Directory', anchor=CENTER)
 
-scrollbar_game_list = Scrollbar(window, bootstyle="primary-round", orient=ttk.VERTICAL, command=treeview_game_list.yview)
+treeview_game_list.grid(row=0, column=0, padx=(15,0), pady=10, sticky='nsew')
+
+scrollbar_game_list = Scrollbar(game_list_frame, bootstyle="primary-round", orient=ttk.VERTICAL, command=treeview_game_list.yview)
+scrollbar_game_list.grid(row=0, column=1, pady=10, sticky='ns')
 treeview_game_list.configure(yscroll=scrollbar_game_list.set)
 
-treeview_game_list.place(x=30, y=160, width=730, height=310)
-scrollbar_game_list.place(x=760, y=160, height=310)
-
 #*************************************************************
-
+# Tools Frame
 tools_frame = Labelframe(window, text='Tools', bootstyle="primary")
-tools_frame.place(x=15, y=510, width=770, height=80)
+tools_frame.grid(row=2, column=0, padx=15, pady=10, sticky='ew')
 
-# Checkboxes for the various options
-checkbox_merge_bin = Checkbutton(window, text ='Merge Bin Files', bootstyle="round-toggle", takefocus = 0, variable=merge_bin_files, command = _checkbox_changed)
-checkbox_merge_bin.place(x=60, y=530)
+# Configure grid for tools frame - equal columns
+tools_frame.grid_columnconfigure(0, weight=1)
+tools_frame.grid_columnconfigure(1, weight=1)
+tools_frame.grid_columnconfigure(2, weight=1)
 
-checkbox_generate_cue = Checkbutton(window, text ='CU2 For All', bootstyle="round-toggle", takefocus = 0, variable=force_cu2, command = _checkbox_changed)
-checkbox_generate_cue.place(x=60, y=560)
+# Create frames for each column to center the checkboxes
+left_column = ttk.Frame(tools_frame)
+left_column.grid(row=0, column=0, rowspan=2, sticky='nsew')
+left_column.grid_columnconfigure(0, weight=1)
 
-checkbox_limit_name = Checkbutton(window, text ='Fix Invalid Name', bootstyle="round-toggle", takefocus = 0, variable=validate_game_name, command = _checkbox_changed)
-checkbox_limit_name.place(x=220, y=530)
+middle_column = ttk.Frame(tools_frame)
+middle_column.grid(row=0, column=1, rowspan=2, sticky='nsew')
+middle_column.grid_columnconfigure(0, weight=1)
 
-checkbox_auto_rename = Checkbutton(window, text ='Auto Rename', bootstyle="round-toggle", takefocus = 0, variable=auto_rename, command = _checkbox_changed)
-checkbox_auto_rename.place(x=220, y=560)
+right_column = ttk.Frame(tools_frame)
+right_column.grid(row=0, column=2, rowspan=2, sticky='nsew')
+right_column.grid_columnconfigure(0, weight=1)
 
-checkbox_add_art = Checkbutton(window, text ='Add Cover Art', bootstyle="round-toggle", takefocus = 0, variable=add_cover_art, command = _checkbox_changed)
-checkbox_add_art.place(x=370, y=530)
+# Checkboxes for options - now in their respective column frames
+checkbox_merge_bin = Checkbutton(left_column, text='Merge Bin Files', bootstyle="round-toggle", takefocus=0, variable=merge_bin_files, command=_checkbox_changed)
+checkbox_merge_bin.grid(row=0, column=0, padx=5, pady=2)
 
-checkbox_create_multi_disc = Checkbutton(window, text ='Create Multi-Disc', bootstyle="round-toggle", takefocus = 0, variable=create_multi_disc, command = _checkbox_changed)
-checkbox_create_multi_disc.place(x=370, y=560)
+checkbox_generate_cue = Checkbutton(left_column, text='CU2 For All', bootstyle="round-toggle", takefocus=0, variable=force_cu2, command=_checkbox_changed)
+checkbox_generate_cue.grid(row=1, column=0, padx=5, pady=2)
+
+checkbox_limit_name = Checkbutton(middle_column, text='Fix Invalid Name', bootstyle="round-toggle", takefocus=0, variable=validate_game_name, command=_checkbox_changed)
+checkbox_limit_name.grid(row=0, column=0, padx=5, pady=2)
+
+checkbox_auto_rename = Checkbutton(middle_column, text='Auto Rename', bootstyle="round-toggle", takefocus=0, variable=auto_rename, command=_checkbox_changed)
+checkbox_auto_rename.grid(row=1, column=0, padx=5, pady=2)
+
+checkbox_add_art = Checkbutton(right_column, text='Add Cover Art', bootstyle="round-toggle", takefocus=0, variable=add_cover_art, command=_checkbox_changed)
+checkbox_add_art.grid(row=0, column=0, padx=5, pady=2)
+
+checkbox_create_multi_disc = Checkbutton(right_column, text='Create Multi-Disc', bootstyle="round-toggle", takefocus=0, variable=create_multi_disc, command=_checkbox_changed)
+checkbox_create_multi_disc.grid(row=1, column=0, padx=5, pady=2)
 
 #*************************************************************
-
+# Progress Frame
 progress_frame = Labelframe(window, text='Progress', bootstyle="primary")
-progress_frame.place(x=15, y=610, width=770, height=80)
+progress_frame.grid(row=3, column=0, padx=15, pady=10, sticky='ew')
 
-# Progressbar to inform the user of the progress (using floodgauge widget from ttkbootstrap)
-progress_bar = Floodgauge(font=(None, 14, 'bold'), mask='', mode='determinate')
-progress_bar.place(x=30, y=630, width=600, height=30)
+# Configure grid for progress frame
+progress_frame.grid_columnconfigure(0, weight=1)
+progress_frame.grid_columnconfigure(1, weight=0)
+progress_frame.grid_rowconfigure(0, weight=0)
+progress_frame.grid_rowconfigure(1, weight=0)
 
-# Button to start the process
-button_start = Button(window, text='Start', command = _start_button_clicked, state=DISABLED)
-button_start.place(x=640, y=630, width=130, height=30)
+# Progress bar
+progress_bar = Floodgauge(progress_frame, font=(None, 14, 'bold'), mask='', mode='determinate')
+progress_bar.grid(row=0, column=0, padx=15, pady=5, sticky='ew')
 
-# Label to display the progress info
-label_progress = Label(window, text=PROGRESS_STATUS, width = 120, bootstyle="primary")
-label_progress.place(x=30, y=658, width=750, height=30)
+# Start button
+button_start = Button(progress_frame, text='Start', width=10, command=_start_button_clicked, state=DISABLED)
+button_start.grid(row=0, column=1, padx=15, pady=5, sticky='e')
+
+# Progress label
+label_progress = Label(progress_frame, text=PROGRESS_STATUS, bootstyle="primary")
+label_progress.grid(row=1, column=0, columnspan=2, padx=15, pady=5, sticky='ew')
 
 label_progress.after(1000, ensure_database_exists)
 
