@@ -52,7 +52,7 @@ from cue2cu2 import set_cu2_error_log_path, start_cue2cu2
 from db import ensure_database_exists, select, extract_game_cover_blob
 
 REGION_CODES = ['DTLS_', 'SCES_', 'SLES_', 'SLED_', 'SCED_', 'SCUS_', 'SLUS_', 'SLPS_', 'SCAJ_', 'SLKA_', 'SLPM_', 'SCPS_', 'SCPM_', 'PCPX_', 'PAPX_', 'PTPX_', 'LSP0_', 'LSP1_', 'LSP2_', 'LSP9_', 'SIPS_', 'ESPM_', 'SCZS_', 'SPUS_', 'PBPX_', 'LSP_']
-CURRENT_REVISION = 0.2
+CURRENT_REVISION = 0.8
 PROGRESS_STATUS = 'Status:'
 MAX_GAME_NAME_LENGTH = 56
 
@@ -73,6 +73,17 @@ def _get_stored_theme():
 # Create the main window
 window = ttk.Window(title=f'PSIO Game Assistant v{CURRENT_REVISION}', themename=_get_stored_theme(), size=[800,710])
 style = Style()
+
+# Configure style for progress bars to match button height
+style.configure(
+    "primary.Horizontal.TProgressbar",
+    thickness=28  # Ajustado para corresponder à altura dos botões
+)
+
+style.configure(
+    "primary.Horizontal.TFloodgauge",
+    thickness=28  # Ajustado para corresponder à altura dos botões
+)
 
 # Create Tkinter variables after window initialization
 src_path = StringVar(value='')
@@ -750,7 +761,13 @@ button_src_browse = Button(browse_frame, text='Browse', width=10, bootstyle="pri
 button_src_browse.grid(row=0, column=1, padx=15, pady=5, sticky='e')
 
 # Progress bar and scan button
-progress_bar_indeterminate = ttk.Floodgauge(browse_frame, font=(None, 14, 'bold'), mask='', mode='indeterminate')
+progress_bar_indeterminate = ttk.Floodgauge(
+    browse_frame, 
+    font=(None, 14, 'bold'), 
+    mask='', 
+    mode='indeterminate',
+    bootstyle="primary"
+)
 progress_bar_indeterminate.grid(row=1, column=0, padx=15, pady=5, sticky='ew')
 
 button_src_scan = Button(browse_frame, text='Scan', width=10, command=_scan_button_clicked, state=DISABLED)
@@ -849,7 +866,13 @@ progress_frame.grid_rowconfigure(0, weight=0)
 progress_frame.grid_rowconfigure(1, weight=0)
 
 # Progress bar
-progress_bar = Floodgauge(progress_frame, font=(None, 14, 'bold'), mask='', mode='determinate')
+progress_bar = Floodgauge(
+    progress_frame, 
+    font=(None, 14, 'bold'), 
+    mask='', 
+    mode='determinate',
+    bootstyle="primary"
+)
 progress_bar.grid(row=0, column=0, padx=15, pady=5, sticky='ew')
 
 # Start button
