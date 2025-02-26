@@ -75,6 +75,7 @@ set_binmerge_error_log_path(error_log_file)
 # Function that processes the games
 def _process_games():
     total_games = len(game_list)
+    covers_not_found = 0
     for index, game in enumerate(game_list):
         game_id = game.id
         if not game_id:
@@ -86,7 +87,7 @@ def _process_games():
         game_full_path = join(game.directory_path, game.directory_name)
         cue_full_path = join(game_full_path, game.cue_sheet.file_name)
 
-        label_progress.configure(text=f'{PROGRESS_STATUS} Processing - {game_name}')
+        label_progress.configure(text=f'{PROGRESS_STATUS} In Progress - {game_name}')
 
         print(f'GAME_ID: {game_id}')
         print(f'GAME_NAME: {game_name}')
@@ -95,46 +96,48 @@ def _process_games():
 
         if merge_bin_files.get() and len(game.cue_sheet.bin_files) > 1:
             print('MERGING BIN FILES...')
-            label_progress.configure(text=f'{PROGRESS_STATUS} Merging bin files - {game_name}')
+            label_progress.configure(text=f'{PROGRESS_STATUS} In Progress - Merging bin files - {game_name}')
             _merge_bin_files(game, game_name, game_full_path, cue_full_path)
             start_cue2cu2(cue_full_path, f'{game_name}.bin')
 
         if force_cu2.get() and not game.cu2_present:
             print('GENERATING CU2...')
-            label_progress.configure(text=f'{PROGRESS_STATUS} Generating cu2 file - {game_name}')
+            label_progress.configure(text=f'{PROGRESS_STATUS} In Progress - Generating cu2 file - {game_name}')
             start_cue2cu2(cue_full_path, f'{game_name}.bin')
 
         if auto_rename.get():
             print('RENAMING THE GAME FILES...')
-            label_progress.configure(text=f'{PROGRESS_STATUS} Renaming - {game_name}')
-            redump_game_name = _game_name_validator(_get_redump_name(game_id))
-            if redump_game_name:
-                _rename_game(game_full_path, game_name, redump_game_name)
+            label_progress.configure(text=f'{PROGRESS_STATUS} In Progress - Renaming - {game_name}')
+            try:
+                redump_game_name = _game_name_validator(_get_redump_name(game_id))
+                if redump_game_name:
+                    _rename_game(game_full_path, game_name, redump_game_name)
+            except Exception as e:
+                print(f"WARNING: Could not rename game {game_name}. Skipping this game. Error: {e}")
 
         if validate_game_name.get() and not auto_rename.get():
             if len(game_name) > MAX_GAME_NAME_LENGTH or '.' in game_name:
                 print('VALIDATING THE GAME NAME...')
-                label_progress.configure(text=f'{PROGRESS_STATUS} Validating name - {game_name}')
-                new_game_name = _game_name_validator(game)
+                label_progress.configure(text=f'{PROGRESS_STATUS} In Progress - Validating name - {game_name}')
+                new_game_name = _game_name_validator(game_name)
                 print(f'new_game_name: {new_game_name}')
                 if new_game_name != game_name:
                     _rename_game(game_full_path, game_name, new_game_name)
 
         if add_cover_art.get() and not game.cover_art_present:
-            print('ADDING THE GAME COVER ART...')
-            label_progress.configure(text=f'{PROGRESS_STATUS} Adding cover art - {game_name}')
-            _copy_game_cover(game_full_path, game_id, game_name)
+            try:
+                print('ADDING THE GAME COVER ART...')
+                label_progress.configure(text=f'{PROGRESS_STATUS} In Progress - Adding cover art - {game_name}')
+                _copy_game_cover(game_full_path, game_id, game_name)
+            except Exception as e:
+                print(f"WARNING: Could not add cover art for {game_name}. Skipping this game. Error: {e}")
+                covers_not_found += 1
 
         # Update the progress bar
         progress = int((index + 1) / total_games * 100)
         _update_progress_bar(progress)
 
-    label_progress.configure(text=PROGRESS_STATUS)
-
-    # Show success modal
-    success_modal = MessageDialog("All processes completed successfully!", title="Success", width=300, padding=(20, 20))
-    success_modal.place(x=(window.winfo_width() // 2) - 150, y=(window.winfo_height() // 2) - 50)
-    success_modal.show()
+    label_progress.configure(text=f'{PROGRESS_STATUS} Done')
 
 
 # *****************************************************************************************************************
@@ -143,31 +146,31 @@ def _process_games():
 # *****************************************************************************************************************
 # Function to merge multi-bin files
 def _merge_bin_files(game, game_name, game_full_path, cue_full_path):
-	# Create a temp directory to store the merged bin file
-	temp_game_dir = join(game_full_path, 'temp_dir')
-	if not exists(temp_game_dir):
-		try:
-			mkdir(temp_game_dir)
-		except OSError as error:
-			pass
-	if exists(temp_game_dir):
-		label_progress.configure(text = f'{PROGRESS_STATUS} Merging bin files')
-		start_bin_merge(cue_full_path, game_name, temp_game_dir)
+    # Create a temp directory to store the merged bin file
+    temp_game_dir = join(game_full_path, 'temp_dir')
+    if not exists(temp_game_dir):
+        try:
+            mkdir(temp_game_dir)
+        except OSError as error:
+            pass
+    if exists(temp_game_dir):
+        label_progress.configure(text=f'{PROGRESS_STATUS} Merging bin files')
+        start_bin_merge(cue_full_path, game_name, temp_game_dir)
 
-		# If the bin files have been merged and the new cue file has been generated
-		temp_bin_path = join(temp_game_dir, f'{game_name}.bin')
-		temp_cue_path = join(temp_game_dir, f'{game_name}.cue')
-		if exists(temp_bin_path) and exists(temp_cue_path):
-			# Delete the original cue_sheet and bin files
-			remove(cue_full_path)
-			for orginal_bin_file in game.cue_sheet.bin_files:
-				remove(orginal_bin_file.file_path)
+        # If the bin files have been merged and the new cue file has been generated
+        temp_bin_path = join(temp_game_dir, f'{game_name}.bin')
+        temp_cue_path = join(temp_game_dir, f'{game_name}.cue')
+        if exists(temp_bin_path) and exists(temp_cue_path):
+            # Delete the original cue_sheet and bin files
+            remove(cue_full_path)
+            for original_bin_file in game.cue_sheet.bin_files:
+                remove(join(game_full_path, original_bin_file.file_name))
 
-			# Move the newly merged bin_file and cue_sheet back into the game directory
-			move(temp_bin_path, join(game_full_path, f'{game_name}.bin'))
-			move(temp_cue_path, join(game_full_path, f'{game_name}.cue'))
+            # Move the newly merged bin_file and cue_sheet back into the game directory
+            move(temp_bin_path, join(game_full_path, f'{game_name}.bin'))
+            move(temp_cue_path, join(game_full_path, f'{game_name}.cue'))
 
-		rmtree(temp_game_dir)
+        rmtree(temp_game_dir)
 # *****************************************************************************************************************
 
 
@@ -204,17 +207,15 @@ def _rename_game(game_full_path, game_name, new_game_name):
 
 
 # *****************************************************************************************************************
-# Function to validate the game name (ensure irt is not too long and does not contain periods)
-def _game_name_validator(game):
-	game_name = game.cue_sheet.game_name
-	if '.' in game_name:
-		game_name = game_name.replace('.', '_')
+# Function to validate the game name (ensure it is not too long and does not contain periods)
+def _game_name_validator(game_name):
+    if '.' in game_name:
+        game_name = game_name.replace('.', '_')
 
-	if len(game_name) > MAX_GAME_NAME_LENGTH:
-		game_name = game_name[:MAX_GAME_NAME_LENGTH]
+    if len(game_name) > MAX_GAME_NAME_LENGTH:
+        game_name = game_name[:MAX_GAME_NAME_LENGTH]
 
-	game.cue_sheet.new_name = game_name
-	return game_name
+    return game_name
 # *****************************************************************************************************************
 
 
@@ -270,26 +271,26 @@ def _generate_multidisc_file(game_dir):
 # *****************************************************************************************************************
 # Function to get the game name (using names from redump and the psx data-centre)
 def _get_redump_name(game_id):
-	response = select(f'''SELECT name FROM games WHERE game_id = "{game_id.replace('-','_')}";''')
-	if response is not None and response != []:
-		game_name = response[0][0]
+    response = select(f'''SELECT name, disc_number FROM games WHERE game_id = "{game_id.replace('-','_')}";''')
+    if response is not None and response != []:
+        game_name, disc_number = response[0]
 
-		# Ensure that the game name (including disc number and extension) is not more than 60 chars
-		if validate_game_name.get():
-			if int(line[2]) > 0:
-				if len(game_name) <= 47:
-					return f'{game_name} (Disc {line[2]})'
-				else:
-					return f'{game_name[:47]} (Disc {line[2]})'
-			else:
-				if len(game_name) <= 47:
-					return game_name
-				else:
-					return f'{game_name[:47]}'
-		else:
-			return game_name
+        # Ensure that the game name (including disc number and extension) is not more than 60 chars
+        if validate_game_name.get():
+            if int(disc_number) > 0:
+                if len(game_name) <= 47:
+                    return f'{game_name} (Disc {disc_number})'
+                else:
+                    return f'{game_name[:47]} (Disc {disc_number})'
+            else:
+                if len(game_name) <= 47:
+                    return game_name
+                else:
+                    return f'{game_name[:47]}'
+        else:
+            return game_name
 
-	return ''
+    return ''
 # *****************************************************************************************************************
 
 
