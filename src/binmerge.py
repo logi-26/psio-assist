@@ -84,7 +84,7 @@ def _sectors_to_cuestamp(sectors):
 
 # **********************************************************************************************************
 def _cuestamp_to_sectors(stamp):
-	m = match('(\d+):(\d+):(\d+)', stamp)
+	m = match(r'(\d+):(\d+):(\d+)', stamp)
 	minutes = int(m.group(1))
 	seconds = int(m.group(2))
 	fields = int(m.group(3))
