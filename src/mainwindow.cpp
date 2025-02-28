@@ -25,6 +25,9 @@ namespace fs = std::filesystem;
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
+    // Aplicar estilo personalizado para diálogos
+    setDialogStyle();
+    
     // Definir tamanho inicial da janela
     resize(800, 600);
     setMinimumSize(800, 600);
@@ -32,6 +35,11 @@ MainWindow::MainWindow(QWidget *parent)
     Config::getInstance().load();
     setupUI();
     setupMenus();
+    
+    // Inicializar banco de dados
+    db.init();
+    
+    // Carregar configurações do banco de dados
     loadFromDatabase();
 
     // Restaurar última pasta usada
@@ -151,6 +159,70 @@ void MainWindow::setupMenus() {
     // Help Menu
     helpMenu = menuBar()->addMenu("&Ajuda");
     helpMenu->addAction("Sobre", this, &MainWindow::onAbout);
+}
+
+void MainWindow::setDialogStyle()
+{
+    // Definir uma folha de estilo personalizada para diálogos
+    QString dialogStyle = R"(
+        QDialog, QMessageBox, QFileDialog {
+            background-color: #2D2D30;
+            color: #E0E0E0;
+        }
+        
+        QDialog QLabel, QMessageBox QLabel, QFileDialog QLabel {
+            color: #E0E0E0;
+        }
+        
+        QDialog QPushButton, QMessageBox QPushButton, QFileDialog QPushButton {
+            background-color: #3F3F46;
+            color: #E0E0E0;
+            border: 1px solid #555555;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        
+        QDialog QPushButton:hover, QMessageBox QPushButton:hover, QFileDialog QPushButton:hover {
+            background-color: #505050;
+        }
+        
+        QDialog QPushButton:pressed, QMessageBox QPushButton:pressed, QFileDialog QPushButton:pressed {
+            background-color: #404040;
+        }
+        
+        QDialog QLineEdit, QFileDialog QLineEdit {
+            background-color: #333337;
+            color: #E0E0E0;
+            border: 1px solid #555555;
+            padding: 3px;
+        }
+        
+        QDialog QTreeView, QFileDialog QTreeView, QDialog QListView, QFileDialog QListView {
+            background-color: #252526;
+            color: #E0E0E0;
+            border: 1px solid #555555;
+        }
+        
+        QDialog QTreeView::item:selected, QFileDialog QTreeView::item:selected,
+        QDialog QListView::item:selected, QFileDialog QListView::item:selected {
+            background-color: #3F3F46;
+        }
+        
+        QDialog QComboBox, QFileDialog QComboBox {
+            background-color: #333337;
+            color: #E0E0E0;
+            border: 1px solid #555555;
+            padding: 3px;
+        }
+        
+        QDialog QComboBox QAbstractItemView, QFileDialog QComboBox QAbstractItemView {
+            background-color: #252526;
+            color: #E0E0E0;
+            selection-background-color: #3F3F46;
+        }
+    )";
+    
+    qApp->setStyleSheet(qApp->styleSheet() + dialogStyle);
 }
 
 std::string MainWindow::extractGameId(const QString& binPath) {

@@ -74,6 +74,7 @@ private:
     void fixGameName(Game& game);
     void autoRenameGame(Game& game);
     void setUiEnabled(bool enabled);
+    void setDialogStyle();
 
     // UI Elements
     QWidget *centralWidget;
