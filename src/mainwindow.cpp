@@ -100,6 +100,7 @@ void MainWindow::setupUI() {
     cu2ForAllCheck = new QCheckBox("CU2 For All", this);
     fixInvalidNameCheck = new QCheckBox("Fix Invalid Name", this);
     autoRenameCheck = new QCheckBox("Auto Rename", this);
+    autoRenameCheck->setEnabled(true);  // Habilitar o checkbox
     addCoverArtCheck = new QCheckBox("Add Cover Art", this);
     createMultiDiscCheck = new QCheckBox("Create Multi-Disc", this);
     
@@ -1309,39 +1310,94 @@ void MainWindow::fixGameName(Game& game) {
 }
 
 void MainWindow::autoRenameGame(Game& game) {
-    QString oldName = QString::fromStdString(game.getDirectoryName());
-    QString gameId = QString::fromStdString(game.getId());
+    QString dirPath = QString::fromStdString(game.getDirectoryPath());
+    QString dirName = QString::fromStdString(game.getDirectoryName());
+    QDir gameDir(dirPath);
     
-    // Buscar nome do jogo diretamente
-    QString newName;
+    // Verificar se é um jogo multi-disco
+    bool isMultiDisc = false;
     
-    // Tentar obter o nome do banco de dados
-    QSqlQuery query;
-    query.prepare("SELECT title FROM games WHERE id = :id");
-    query.bindValue(":id", gameId);
+    // Verificar se o nome do diretório contém "Disc" ou "CD" seguido de um número
+    QRegularExpression discRegex("(Disc|CD)\\s*\\d+", QRegularExpression::CaseInsensitiveOption);
+    isMultiDisc = discRegex.match(dirName).hasMatch();
     
-    if (query.exec() && query.next()) {
-        newName = query.value("title").toString();
+    // Também verificar se há mais de um arquivo .bin no diretório
+    QStringList binFiles = gameDir.entryList({"*.bin"}, QDir::Files);
+    if (binFiles.size() > 1) {
+        isMultiDisc = true;
+    }
+    
+    QString newBaseName;
+    
+    if (isMultiDisc) {
+        // Para jogos multi-disco, usar apenas "Disc X"
+        int discNumber = game.getDiscNumber();
+        newBaseName = QString("Disc %1").arg(discNumber);
     } else {
-        // Se não encontrou no banco, usa o ID do jogo
-        newName = gameId;
+        // Para jogos normais, usar o nome do diretório
+        newBaseName = dirName;
     }
     
-    // Limpar nome
-    newName.replace(QRegularExpression("[.\\/:*?\"<>|]"), "_");
-    if (newName.length() > 60) {
-        newName = newName.left(60);
+    // Nome do novo arquivo .bin
+    QString newBinName = newBaseName + ".bin";
+    
+    // Renomear arquivos .bin
+    for (const QString& binFile : binFiles) {
+        if (binFile != newBinName) {
+            QString oldPath = gameDir.absoluteFilePath(binFile);
+            QString newPath = gameDir.absoluteFilePath(newBinName);
+            QFile::rename(oldPath, newPath);
+        }
     }
     
-    if (oldName != newName && !newName.isEmpty()) {
-        QDir dir(QString::fromStdString(game.getDirectoryPath()));
-        QDir parentDir = dir;
-        parentDir.cdUp();
+    // Renomear arquivos .cue
+    QStringList cueFiles = gameDir.entryList({"*.cue"}, QDir::Files);
+    for (const QString& cueFile : cueFiles) {
+        QString newCueName = newBaseName + ".cue";
+        if (cueFile != newCueName) {
+            QString oldPath = gameDir.absoluteFilePath(cueFile);
+            QString newPath = gameDir.absoluteFilePath(newCueName);
+            QFile::rename(oldPath, newPath);
+            
+            // Também precisamos atualizar o conteúdo do arquivo .cue para refletir o novo nome do .bin
+            updateCueFileContent(newPath, newBinName);
+        }
+    }
+    
+    // Renomear arquivos .cu2
+    QStringList cu2Files = gameDir.entryList({"*.cu2"}, QDir::Files);
+    for (const QString& cu2File : cu2Files) {
+        QString newCu2Name = newBaseName + ".cu2";
+        if (cu2File != newCu2Name) {
+            QString oldPath = gameDir.absoluteFilePath(cu2File);
+            QString newPath = gameDir.absoluteFilePath(newCu2Name);
+            QFile::rename(oldPath, newPath);
+        }
+    }
+}
+
+// Método auxiliar para atualizar o conteúdo do arquivo .cue
+void MainWindow::updateCueFileContent(const QString& cuePath, const QString& newBinName) {
+    QFile cueFile(cuePath);
+    if (!cueFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return;
+    }
+    
+    QString content = cueFile.readAll();
+    cueFile.close();
+    
+    // Substituir o nome do arquivo .bin no conteúdo do arquivo .cue
+    QRegularExpression fileRegex("FILE\\s+\"(.+\\.bin)\"\\s+BINARY");
+    QRegularExpressionMatch match = fileRegex.match(content);
+    
+    if (match.hasMatch()) {
+        QString oldBinName = match.captured(1);
+        content.replace(oldBinName, newBinName);
         
-        // Renomear diretório
-        if (parentDir.rename(oldName, newName)) {
-            game.setDirectoryName(newName.toStdString());
-            game.setDirectoryPath((parentDir.absolutePath() + "/" + newName).toStdString());
+        if (cueFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QTextStream out(&cueFile);
+            out << content;
+            cueFile.close();
         }
     }
 }

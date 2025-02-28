@@ -75,6 +75,7 @@ private:
     void autoRenameGame(Game& game);
     void setUiEnabled(bool enabled);
     void setDialogStyle();
+    void updateCueFileContent(const QString& cuePath, const QString& newBinName);
 
     // UI Elements
     QWidget *centralWidget;
