@@ -202,14 +202,10 @@ std::string MainWindow::extractGameId(const QString& binPath) {
 void MainWindow::onSelectDirectory() {
     QString dir = QFileDialog::getExistingDirectory(this,
         "Selecionar Diretório", 
-        Config::getInstance().getLastDirectory(),
+        QString(),
         QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
 
     if (dir.isEmpty()) return;
-
-    // Salvar o diretório selecionado
-    Config::getInstance().setLastDirectory(dir);
-    Config::getInstance().save();
 
     // Limpar lista atual
     games.clear();
@@ -223,46 +219,56 @@ void MainWindow::onSelectDirectory() {
     
     QApplication::processEvents();
 
-    // Escanear diretório recursivamente
-    QDirIterator it(dir, QStringList() << "*.cue", QDir::Files, QDirIterator::Subdirectories);
-    std::vector<QString> cuePaths;
+    // Encontrar todos os diretórios que contêm arquivos BIN ou CU2
+    QDirIterator it(dir, QStringList() << "*.bin" << "*.cu2", QDir::Files, QDirIterator::Subdirectories);
+    QSet<QString> gameDirs;
     
     while (it.hasNext()) {
-        cuePaths.push_back(it.next());
+        QString filePath = it.next();
+        gameDirs.insert(QFileInfo(filePath).dir().absolutePath());
     }
     
-    // Configurar progresso para processamento dos arquivos
-    progressBar->setMaximum(cuePaths.size());
+    // Configurar progresso
+    progressBar->setMaximum(gameDirs.size());
     progressBar->setValue(0);
     
-    // Processar cada arquivo CUE encontrado
-    for (size_t i = 0; i < cuePaths.size(); ++i) {
-        QString cuePath = cuePaths[i];
-        QFileInfo cueInfo(cuePath);
-        QDir gameDir = cueInfo.dir();
-        
+    // Processar cada diretório encontrado
+    int count = 0;
+    for (const QString& gamePath : gameDirs) {
+        QDir gameDir(gamePath);
         statusLabel->setText(QString("Processando: %1").arg(gameDir.dirName()));
         
         try {
             // Verificar se tem capa
             bool hasCoverArt = QFileInfo::exists(gameDir.filePath("cover.jpg")) ||
-                              QFileInfo::exists(gameDir.filePath("cover.png"));
+                              QFileInfo::exists(gameDir.filePath("cover.png")) ||
+                              QFileInfo::exists(gameDir.filePath("cover.bmp"));
             
             // Verificar se tem CU2
             bool hasCu2 = QFileInfo::exists(gameDir.filePath(gameDir.dirName() + ".cu2"));
             
-            // Criar CueSheet
-            CueSheet cueSheet(
-                cueInfo.fileName().toStdString(),
-                cueInfo.absoluteFilePath().toStdString(),
-                gameDir.dirName().toStdString()
-            );
-
-            // Encontrar o primeiro arquivo BIN associado
-            QString binFileName = gameDir.dirName() + ".bin";
-            QString binPath = gameDir.filePath(binFileName);
+            // Encontrar arquivo CUE (se existir)
+            QStringList cueFiles = gameDir.entryList({"*.cue"}, QDir::Files);
+            CueSheet cueSheet;
             
-            // Extrair o ID do jogo do arquivo BIN
+            if (!cueFiles.isEmpty()) {
+                QString cuePath = gameDir.filePath(cueFiles.first());
+                cueSheet = CueSheet(
+                    cueFiles.first().toStdString(),
+                    cuePath.toStdString(),
+                    gameDir.dirName().toStdString()
+                );
+            }
+
+            // Encontrar todos os arquivos BIN
+            QStringList binFiles = gameDir.entryList({"*.bin"}, QDir::Files);
+            
+            // Extrair o ID do jogo do arquivo BIN principal ou qualquer BIN disponível
+            QString binPath = gameDir.filePath(gameDir.dirName() + ".bin");
+            if (!QFile::exists(binPath) && !binFiles.isEmpty()) {
+                binPath = gameDir.filePath(binFiles.first());
+            }
+            
             std::string gameId = extractGameId(binPath);
             if (gameId.empty()) {
                 qDebug() << "Aviso: Não foi possível extrair ID do jogo:" << gameDir.dirName();
@@ -274,7 +280,7 @@ void MainWindow::onSelectDirectory() {
                 gameDir.dirName().toStdString(),
                 gameDir.absolutePath().toStdString(),
                 gameId,
-                1,
+                1,  // TODO: detectar número do disco
                 std::vector<std::string>(),
                 cueSheet,
                 hasCoverArt,
@@ -287,7 +293,7 @@ void MainWindow::onSelectDirectory() {
             qDebug() << "Erro ao processar" << gameDir.dirName() << ":" << e.what();
         }
         
-        progressBar->setValue(i + 1);
+        progressBar->setValue(++count);
         QApplication::processEvents();
     }
 

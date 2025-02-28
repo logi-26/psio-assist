@@ -7,6 +7,10 @@
 
 class CueSheet {
 public:
+    // Construtor padrão
+    CueSheet() : fileName(""), filePath(""), gameName("") {}
+    
+    // Construtor existente
     CueSheet(const std::string& fileName, const std::string& filePath, const std::string& gameName);
     ~CueSheet() = default;
 
