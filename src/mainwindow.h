@@ -24,6 +24,7 @@
 #include <QDesktopServices>
 #include <QRegularExpression>
 #include <QSqlDatabase>
+#include <QDirIterator>
 #include "game.h"
 #include "database.h"
 #include "utils.h"
@@ -67,6 +68,8 @@ private:
     QString generateCu2File(const Game &game);
     std::string extractGameId(const QString& binPath);
     bool isValidGameName(const std::string& name);
+    bool isMultiDisc(const Game& game);
+    void processMultiDisc(Game& game);
 
     // UI Elements
     QWidget *centralWidget;

@@ -1,4 +1,8 @@
 #include "game.h"
+#include <QString>
+#include <QRegularExpression>
+#include <QFileInfo>
+#include <QDir>
 
 Game::Game(const std::string& dirName, 
            const std::string& dirPath,
@@ -81,4 +85,41 @@ void Game::setCoverArt(bool has) {
 
 void Game::setCu2Present(bool present) {
     hasCu2Flag = present;
+}
+
+bool Game::isRelatedDisc(const Game& other) const {
+    QString thisName = QString::fromStdString(directoryName);
+    QString otherName = QString::fromStdString(other.directoryName);
+    
+    // Remove "(Disc X)" ou "DiscX" do nome para comparação
+    QString baseNamePattern1 = R"(\s*\(Disc\s*\d+\))";
+    QString baseNamePattern2 = R"(\s*Disc\s*\d+)";
+    
+    QString thisBaseName = thisName.remove(QRegularExpression(baseNamePattern1))
+                                  .remove(QRegularExpression(baseNamePattern2));
+    QString otherBaseName = otherName.remove(QRegularExpression(baseNamePattern1))
+                                    .remove(QRegularExpression(baseNamePattern2));
+    
+    return thisBaseName == otherBaseName;
+}
+
+std::string Game::getBaseGameName() const {
+    QString name = QString::fromStdString(directoryName);
+    QString baseNamePattern1 = R"(\s*\(Disc\s*\d+\))";
+    QString baseNamePattern2 = R"(\s*Disc\s*\d+)";
+    
+    return name.remove(QRegularExpression(baseNamePattern1))
+               .remove(QRegularExpression(baseNamePattern2))
+               .toStdString();
+}
+
+int Game::extractDiscNumber() const {
+    QString name = QString::fromStdString(directoryName);
+    QRegularExpression discPattern(R"(Disc\s*(\d+))");
+    auto match = discPattern.match(name);
+    
+    if (match.hasMatch()) {
+        return match.captured(1).toInt();
+    }
+    return 1;
 } 

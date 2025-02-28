@@ -219,13 +219,13 @@ void MainWindow::onSelectDirectory() {
     
     QApplication::processEvents();
 
-    // Encontrar todos os diretórios que contêm arquivos BIN ou CU2
-    QDirIterator it(dir, QStringList() << "*.bin" << "*.cu2", QDir::Files, QDirIterator::Subdirectories);
+    // Primeiro, encontrar todos os diretórios que contêm arquivos BIN
+    QDirIterator it(dir, QStringList() << "*.bin", QDir::Files, QDirIterator::Subdirectories);
     QSet<QString> gameDirs;
     
     while (it.hasNext()) {
-        QString filePath = it.next();
-        gameDirs.insert(QFileInfo(filePath).dir().absolutePath());
+        QString binPath = it.next();
+        gameDirs.insert(QFileInfo(binPath).dir().absolutePath());
     }
     
     // Configurar progresso
@@ -239,9 +239,10 @@ void MainWindow::onSelectDirectory() {
         statusLabel->setText(QString("Processando: %1").arg(gameDir.dirName()));
         
         try {
-            // Verificar se tem capa (agora inclui qualquer .bmp)
-            bool hasCoverArt = QFileInfo::exists(gameDir.filePath("cover.bmp")) ||
-                              !gameDir.entryList({"*.bmp"}, QDir::Files).isEmpty();
+            // Verificar se tem capa
+            bool hasCoverArt = QFileInfo::exists(gameDir.filePath("cover.jpg")) ||
+                              QFileInfo::exists(gameDir.filePath("cover.png")) ||
+                              QFileInfo::exists(gameDir.filePath("cover.bmp"));
             
             // Verificar se tem CU2
             bool hasCu2 = QFileInfo::exists(gameDir.filePath(gameDir.dirName() + ".cu2"));
@@ -262,7 +263,7 @@ void MainWindow::onSelectDirectory() {
             // Encontrar todos os arquivos BIN
             QStringList binFiles = gameDir.entryList({"*.bin"}, QDir::Files);
             
-            // Extrair o ID do jogo do arquivo BIN principal ou qualquer BIN disponível
+            // Extrair o ID do jogo do arquivo BIN principal
             QString binPath = gameDir.filePath(gameDir.dirName() + ".bin");
             if (!QFile::exists(binPath) && !binFiles.isEmpty()) {
                 binPath = gameDir.filePath(binFiles.first());
@@ -495,6 +496,13 @@ void MainWindow::onProcessGames() {
         Game& game = games[i];
         
         try {
+            // Processar multi-disco apenas se checkbox estiver marcado
+            if (createMultiDiscCheck->isChecked() && isMultiDisc(game)) {
+                statusLabel->setText("Processando multi-disco: " + 
+                                  QString::fromStdString(game.getDirectoryName()));
+                processMultiDisc(game);
+            }
+
             // Add Cover Art
             if (addCoverArtCheck->isChecked() && !game.hasCoverArt()) {
                 statusLabel->setText("Processando capas...");
@@ -562,12 +570,6 @@ void MainWindow::onProcessGames() {
             if (autoRenameCheck->isChecked()) {
                 statusLabel->setText("Renomeando arquivos...");
                 // autoRenameFiles(game);
-            }
-
-            // Create Multi-Disc
-            if (createMultiDiscCheck->isChecked()) {
-                statusLabel->setText("Configurando multi-disco...");
-                // setupMultiDisc(game);
             }
 
             processed++;
@@ -947,4 +949,106 @@ void MainWindow::onPreferences() {
         // Recarregar configurações se necessário
         updateGameList();
     }
+}
+
+bool MainWindow::isMultiDisc(const Game& game) {
+    QString dirName = QString::fromStdString(game.getDirectoryName());
+    QString dirPath = QString::fromStdString(game.getDirectoryPath());
+    QDir gameDir(dirPath);
+    
+    // Caso 1: Diretório com "(Disc X)" no nome
+    if (dirName.contains(QRegularExpression(R"(\(Disc\s*\d+\))"))) {
+        // Procurar por outros diretórios com o mesmo nome base
+        QDir parentDir = QFileInfo(dirPath).dir();
+        QString baseName = QString::fromStdString(game.getBaseGameName());
+        QStringList entries = parentDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+        
+        int discCount = 0;
+        for (const QString& entry : entries) {
+            if (entry.contains(baseName) && entry.contains(QRegularExpression(R"(\(Disc\s*\d+\))"))) {
+                discCount++;
+            }
+        }
+        return discCount > 1;
+    }
+    
+    // Caso 2: Múltiplos arquivos BIN/CUE ou BIN/CU2 com "DiscX" no nome
+    QStringList binFiles = gameDir.entryList({"*.bin"}, QDir::Files);
+    int discCount = 0;
+    for (const QString& bin : binFiles) {
+        if (bin.contains(QRegularExpression(R"(Disc\s*\d+)"))) {
+            discCount++;
+        }
+    }
+    return discCount > 1;
+}
+
+void MainWindow::processMultiDisc(Game& game) {
+    // Primeiro verificar se é realmente multi-disco
+    if (!isMultiDisc(game)) {
+        return;
+    }
+    
+    // Encontrar todos os discos relacionados
+    std::vector<Game*> relatedDiscs;
+    relatedDiscs.push_back(&game);
+    
+    for (auto& otherGame : games) {
+        if (&otherGame != &game && game.isRelatedDisc(otherGame)) {
+            relatedDiscs.push_back(&otherGame);
+        }
+    }
+    
+    if (relatedDiscs.size() < 2) {
+        return; // Não é multi-disco
+    }
+    
+    // Ordenar por número do disco
+    std::sort(relatedDiscs.begin(), relatedDiscs.end(),
+        [](Game* a, Game* b) { return a->extractDiscNumber() < b->extractDiscNumber(); });
+    
+    // Criar novo diretório
+    QString baseDir = QFileInfo(QString::fromStdString(game.getDirectoryPath())).dir().absolutePath();
+    QString newDirName = QString::fromStdString(game.getBaseGameName());
+    QString newDirPath = baseDir + "/" + newDirName;
+    
+    QDir().mkpath(newDirPath);
+    
+    // Mover arquivos e criar MULTIDISC.LST
+    QFile multiDiscFile(newDirPath + "/MULTIDISC.LST");
+    if (!multiDiscFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        throw std::runtime_error("Não foi possível criar MULTIDISC.LST");
+    }
+    
+    QTextStream out(&multiDiscFile);
+    
+    for (size_t i = 0; i < relatedDiscs.size(); i++) {
+        Game* disc = relatedDiscs[i];
+        QString discDir = QString::fromStdString(disc->getDirectoryPath());
+        int discNum = i + 1;
+        
+        // Mover arquivos BIN/CUE/CU2
+        QDirIterator it(discDir, QStringList() << "*.bin" << "*.cue" << "*.cu2",
+                       QDir::Files);
+        
+        while (it.hasNext()) {
+            QString filePath = it.next();
+            QFileInfo fileInfo(filePath);
+            QString newName = newDirName + QString(" Disc %1").arg(discNum) + 
+                            "." + fileInfo.suffix();
+            
+            QString newPath = newDirPath + "/" + newName;
+            QFile::rename(filePath, newPath);
+            
+            // Adicionar ao MULTIDISC.LST se for BIN
+            if (fileInfo.suffix().toLower() == "bin") {
+                out << newName << "\n";
+            }
+        }
+        
+        // Remover diretório vazio
+        QDir(discDir).removeRecursively();
+    }
+    
+    multiDiscFile.close();
 } 
