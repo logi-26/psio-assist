@@ -546,8 +546,32 @@ void MainWindow::onProcessGames() {
                         game.setCoverArt(true);
                     }
                 } else {
-                    // Se não encontrou .bmp, tenta baixar
-                    QString gameId = QString::fromStdString(game.getId());
+                    // Determinar o ID do jogo para baixar a capa
+                    QString gameId;
+                    
+                    // Se for multi-disco, usar o ID do primeiro disco
+                    if (isMultiDisc(game)) {
+                        // Encontrar o primeiro disco
+                        Game* firstDisc = &game;
+                        int lowestDiscNum = game.extractDiscNumber();
+                        
+                        for (auto& otherGame : games) {
+                            if (&otherGame != &game && game.isRelatedDisc(otherGame)) {
+                                int discNum = otherGame.extractDiscNumber();
+                                if (discNum < lowestDiscNum) {
+                                    lowestDiscNum = discNum;
+                                    firstDisc = &otherGame;
+                                }
+                            }
+                        }
+                        
+                        gameId = QString::fromStdString(firstDisc->getId());
+                    } else {
+                        // Jogo normal, usar o próprio ID
+                        gameId = QString::fromStdString(game.getId());
+                    }
+                    
+                    // Baixar a capa
                     QByteArray coverData = db.getCoverArt(gameId);
                     
                     if (!coverData.isEmpty()) {

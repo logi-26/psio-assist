@@ -114,12 +114,35 @@ std::string Game::getBaseGameName() const {
 }
 
 int Game::extractDiscNumber() const {
-    QString name = QString::fromStdString(directoryName);
-    QRegularExpression discPattern(R"(Disc\s*(\d+))");
-    auto match = discPattern.match(name);
+    // Procurar por padrões como "Disc 1", "Disc 2", etc.
+    std::string name = directoryName;
+    std::transform(name.begin(), name.end(), name.begin(), ::tolower);
     
-    if (match.hasMatch()) {
-        return match.captured(1).toInt();
+    // Padrões comuns para números de disco
+    std::vector<std::string> patterns = {
+        "disc", "disk", "cd", "vol"
+    };
+    
+    for (const auto& pattern : patterns) {
+        size_t pos = name.find(pattern);
+        if (pos != std::string::npos) {
+            // Procurar por um número após o padrão
+            pos += pattern.length();
+            while (pos < name.length() && (name[pos] == ' ' || name[pos] == '_' || name[pos] == '-')) {
+                pos++;
+            }
+            
+            if (pos < name.length() && isdigit(name[pos])) {
+                return name[pos] - '0';
+            }
+        }
     }
+    
+    // Se não encontrou um padrão claro, verificar se termina com um número
+    if (!name.empty() && isdigit(name.back())) {
+        return name.back() - '0';
+    }
+    
+    // Padrão não encontrado, assumir disco 1
     return 1;
 } 
