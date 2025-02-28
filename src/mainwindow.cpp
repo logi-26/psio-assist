@@ -239,10 +239,9 @@ void MainWindow::onSelectDirectory() {
         statusLabel->setText(QString("Processando: %1").arg(gameDir.dirName()));
         
         try {
-            // Verificar se tem capa
-            bool hasCoverArt = QFileInfo::exists(gameDir.filePath("cover.jpg")) ||
-                              QFileInfo::exists(gameDir.filePath("cover.png")) ||
-                              QFileInfo::exists(gameDir.filePath("cover.bmp"));
+            // Verificar se tem capa (agora inclui qualquer .bmp)
+            bool hasCoverArt = QFileInfo::exists(gameDir.filePath("cover.bmp")) ||
+                              !gameDir.entryList({"*.bmp"}, QDir::Files).isEmpty();
             
             // Verificar se tem CU2
             bool hasCu2 = QFileInfo::exists(gameDir.filePath(gameDir.dirName() + ".cu2"));
@@ -495,25 +494,36 @@ void MainWindow::onProcessGames() {
     for (size_t i = 0; i < games.size(); ++i) {
         Game& game = games[i];
         
-        // Atualizar barra de progresso
-        progressBar->setValue(i + 1);
-        statusLabel->setText(QString("Processando: %1").arg(
-            QString::fromStdString(game.getDirectoryName())));
-
         try {
             // Add Cover Art
             if (addCoverArtCheck->isChecked() && !game.hasCoverArt()) {
-                statusLabel->setText("Baixando capa...");
+                statusLabel->setText("Processando capas...");
                 
-                // Buscar capa no banco de dados
-                QString gameId = QString::fromStdString(game.getId()).replace("-", "_");
+                // Primeiro, verificar se já existe algum .bmp no diretório
+                QDir gameDir(QString::fromStdString(game.getDirectoryPath()));
+                QStringList bmpFiles = gameDir.entryList({"*.bmp"}, QDir::Files);
+                
+                if (!bmpFiles.isEmpty()) {
+                    // Renomear o primeiro .bmp encontrado para cover.bmp
+                    QString oldPath = gameDir.filePath(bmpFiles.first());
+                    QString newPath = gameDir.filePath("cover.bmp");
+                    
+                    if (QFile::exists(newPath)) {
+                        QFile::remove(newPath);  // Remove cover.bmp existente se houver
+                    }
+                    
+                    if (QFile::rename(oldPath, newPath)) {
+                        game.setCoverArt(true);
+                        continue;  // Pula para o próximo jogo
+                    }
+                }
+                
+                // Se não encontrou .bmp ou falhou em renomear, tenta baixar
+                QString gameId = QString::fromStdString(game.getId());
                 QByteArray coverData = db.getCoverArt(gameId);
                 
                 if (!coverData.isEmpty()) {
-                    // Criar arquivo BMP
-                    QString coverPath = QString::fromStdString(game.getDirectoryPath()) + 
-                                     "/" + QString::fromStdString(game.getDirectoryName()) + ".bmp";
-                    
+                    QString coverPath = gameDir.filePath("cover.bmp");
                     QFile coverFile(coverPath);
                     if (coverFile.open(QIODevice::WriteOnly)) {
                         coverFile.write(coverData);
@@ -569,6 +579,7 @@ void MainWindow::onProcessGames() {
                 .arg(e.what()));
         }
 
+        progressBar->setValue(i + 1);
         QApplication::processEvents();
     }
 
