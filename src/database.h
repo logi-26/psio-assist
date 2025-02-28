@@ -34,6 +34,8 @@ public:
     
     QByteArray downloadCoverArt(const QString& gameId);
     
+    QString getGameTitle(const QString& gameId);
+    
     // Evitar cópia da instância singleton
     Database(const Database&) = delete;
     void operator=(const Database&) = delete;

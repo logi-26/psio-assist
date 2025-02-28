@@ -18,6 +18,7 @@
 #include "cu2generator.h"
 #include "uiconfig.h"
 #include "preferencesdialog.h"
+#include <set>
 
 namespace fs = std::filesystem;
 
@@ -420,21 +421,15 @@ void MainWindow::updateGameList() {
 }
 
 bool MainWindow::isValidGameName(const std::string& name) {
-    QString gameName = QString::fromStdString(name);
+    QString qName = QString::fromStdString(name);
     
-    // Verificar caracteres especiais não permitidos
-    static const QRegularExpression invalidChars("[\\\\/:*?\"<>|]");
-    if (gameName.contains(invalidChars)) {
+    // Verificar tamanho
+    if (qName.length() > 60) {
         return false;
     }
     
-    // Verificar se começa ou termina com espaço
-    if (gameName.startsWith(' ') || gameName.endsWith(' ')) {
-        return false;
-    }
-    
-    // Verificar espaços duplos
-    if (gameName.contains("  ")) {
+    // Verificar caracteres inválidos
+    if (qName.contains(QRegularExpression("[.\\/:*?\"<>|]"))) {
         return false;
     }
     
@@ -474,38 +469,65 @@ void MainWindow::onSearchTextChanged(const QString &text) {
 }
 
 void MainWindow::onProcessGames() {
-    if (games.empty()) {
-        QMessageBox::warning(this, "Aviso", "Nenhum jogo para processar!");
-        return;
-    }
-
-    // Desabilitar botão durante o processamento
-    processButton->setEnabled(false);
+    int errors = 0;
+    QStringList errorList;
     
-    // Configurar barra de progresso
+    // Desabilitar a interface durante o processamento
+    setUiEnabled(false);
+    
     progressBar->setMaximum(games.size());
     progressBar->setValue(0);
     
-    int processed = 0;
-    int errors = 0;
-    QStringList errorList;
-
-    Database db;  // Instância do banco de dados
-
     for (size_t i = 0; i < games.size(); ++i) {
         Game& game = games[i];
         
         try {
-            // Processar multi-disco apenas se checkbox estiver marcado
+            // 1. Merge Bin Files
+            if (mergeBinFilesCheck->isChecked()) {
+                QDir gameDir(QString::fromStdString(game.getDirectoryPath()));
+                QStringList binFiles = gameDir.entryList({"*.bin"}, QDir::Files);
+                
+                if (binFiles.size() > 1) {
+                    statusLabel->setText("Mergeando arquivos BIN: " + 
+                                      QString::fromStdString(game.getDirectoryName()));
+                    mergeBinFiles(game);
+                }
+            }
+            
+            // 2. Cu2 For All
+            if (cu2ForAllCheck->isChecked()) {
+                statusLabel->setText("Criando CU2: " + 
+                                  QString::fromStdString(game.getDirectoryName()));
+                generateCu2File(game);
+            }
+            
+            // 3. Fix Invalid Name
+            if (fixInvalidNameCheck->isChecked()) {
+                statusLabel->setText("Corrigindo nome: " + 
+                                  QString::fromStdString(game.getDirectoryName()));
+                if (!isValidGameName(game.getDirectoryName())) {
+                    fixGameName(game);
+                }
+            }
+            
+            // 4. Auto Rename
+            if (autoRenameCheck->isChecked()) {
+                statusLabel->setText("Renomeando: " + 
+                                  QString::fromStdString(game.getDirectoryName()));
+                autoRenameGame(game);
+            }
+            
+            // 5. Create Multi-Disc
             if (createMultiDiscCheck->isChecked() && isMultiDisc(game)) {
                 statusLabel->setText("Processando multi-disco: " + 
                                   QString::fromStdString(game.getDirectoryName()));
                 processMultiDisc(game);
             }
-
-            // Add Cover Art
+            
+            // 6. Add Cover Art
             if (addCoverArtCheck->isChecked() && !game.hasCoverArt()) {
-                statusLabel->setText("Processando capas...");
+                statusLabel->setText("Baixando capa: " + 
+                                  QString::fromStdString(game.getDirectoryName()));
                 
                 // Primeiro, verificar se já existe algum .bmp no diretório
                 QDir gameDir(QString::fromStdString(game.getDirectoryPath()));
@@ -522,87 +544,51 @@ void MainWindow::onProcessGames() {
                     
                     if (QFile::rename(oldPath, newPath)) {
                         game.setCoverArt(true);
-                        continue;  // Pula para o próximo jogo
-                    }
-                }
-                
-                // Se não encontrou .bmp ou falhou em renomear, tenta baixar
-                QString gameId = QString::fromStdString(game.getId());
-                QByteArray coverData = db.getCoverArt(gameId);
-                
-                if (!coverData.isEmpty()) {
-                    QString coverPath = gameDir.filePath("cover.bmp");
-                    QFile coverFile(coverPath);
-                    if (coverFile.open(QIODevice::WriteOnly)) {
-                        coverFile.write(coverData);
-                        coverFile.close();
-                        game.setCoverArt(true);
-                    } else {
-                        throw std::runtime_error("Não foi possível salvar a capa");
                     }
                 } else {
-                    throw std::runtime_error("Capa não encontrada no banco de dados");
+                    // Se não encontrou .bmp, tenta baixar
+                    QString gameId = QString::fromStdString(game.getId());
+                    QByteArray coverData = db.getCoverArt(gameId);
+                    
+                    if (!coverData.isEmpty()) {
+                        QString coverPath = gameDir.filePath("cover.bmp");
+                        QFile coverFile(coverPath);
+                        if (coverFile.open(QIODevice::WriteOnly)) {
+                            coverFile.write(coverData);
+                            coverFile.close();
+                            game.setCoverArt(true);
+                        }
+                    }
                 }
             }
-
-            // Merge Bin Files
-            if (mergeBinFilesCheck->isChecked()) {
-                // Implementar lógica de merge
-                statusLabel->setText("Mesclando arquivos BIN...");
-                // mergeBinFiles(game);
-            }
-
-            // Fix Invalid Name
-            if (fixInvalidNameCheck->isChecked()) {
-                statusLabel->setText("Corrigindo nome...");
-                if (!fixCueFile(game)) {
-                    throw std::runtime_error("Erro ao corrigir arquivo CUE");
-                }
-            }
-
-            // CU2 For All
-            if (cu2ForAllCheck->isChecked()) {
-                statusLabel->setText("Gerando arquivo CU2...");
-                // generateCu2File(game);
-            }
-
-            // Auto Rename
-            if (autoRenameCheck->isChecked()) {
-                statusLabel->setText("Renomeando arquivos...");
-                // autoRenameFiles(game);
-            }
-
-            processed++;
-        }
-        catch (const std::exception& e) {
+            
+            progressBar->setValue(i + 1);
+            QApplication::processEvents();
+            
+        } catch (const std::exception& e) {
             errors++;
             errorList.append(QString("%1: %2")
                 .arg(QString::fromStdString(game.getDirectoryName()))
                 .arg(e.what()));
         }
-
-        progressBar->setValue(i + 1);
-        QApplication::processEvents();
     }
-
-    // Atualizar a interface
+    
+    // Atualizar interface após processamento
+    statusLabel->setText("Atualizando lista de jogos...");
     updateGameList();
-
-    // Restaurar estado original
-    processButton->setEnabled(true);
     progressBar->setValue(0);
-    statusLabel->setText(QString("Jogos encontrados: %1").arg(games.size()));
     
-    // Mostrar resultados
-    QString message = QString("Processamento concluído!\n\n"
-                            "Jogos processados: %1\n"
-                            "Erros encontrados: %2").arg(processed).arg(errors);
+    // Reabilitar a interface
+    setUiEnabled(true);
     
-    if (!errorList.isEmpty()) {
-        message += "\n\nErros:\n" + errorList.join("\n");
+    if (errors > 0) {
+        QString errorMessage = QString("Ocorreram %1 erro(s):\n\n").arg(errors) + 
+                             errorList.join("\n");
+        QMessageBox::warning(this, "Erros no Processamento", errorMessage);
     }
     
-    QMessageBox::information(this, "Resultado", message);
+    statusLabel->setText(QString("Processamento concluído. %1 jogo(s) processado(s)")
+                        .arg(games.size()));
 }
 
 bool MainWindow::fixCueFile(Game& game) {
@@ -1022,6 +1008,14 @@ void MainWindow::processMultiDisc(Game& game) {
     
     QTextStream out(&multiDiscFile);
     
+    // Lista para armazenar informações dos novos discos
+    struct DiscInfo {
+        QString binName;
+        QString discName;
+        QString discPath;
+    };
+    std::vector<DiscInfo> discInfos;
+    
     for (size_t i = 0; i < relatedDiscs.size(); i++) {
         Game* disc = relatedDiscs[i];
         QString discDir = QString::fromStdString(disc->getDirectoryPath());
@@ -1031,24 +1025,328 @@ void MainWindow::processMultiDisc(Game& game) {
         QDirIterator it(discDir, QStringList() << "*.bin" << "*.cue" << "*.cu2",
                        QDir::Files);
         
+        DiscInfo info;
+        info.discName = newDirName + QString(" Disc %1").arg(discNum);
+        info.discPath = newDirPath;
+        
         while (it.hasNext()) {
             QString filePath = it.next();
             QFileInfo fileInfo(filePath);
-            QString newName = newDirName + QString(" Disc %1").arg(discNum) + 
-                            "." + fileInfo.suffix();
+            QString newName = info.discName + "." + fileInfo.suffix();
             
             QString newPath = newDirPath + "/" + newName;
             QFile::rename(filePath, newPath);
             
             // Adicionar ao MULTIDISC.LST se for BIN
             if (fileInfo.suffix().toLower() == "bin") {
+                info.binName = newName;
                 out << newName << "\n";
             }
         }
+        
+        discInfos.push_back(info);
         
         // Remover diretório vazio
         QDir(discDir).removeRecursively();
     }
     
     multiDiscFile.close();
+    
+    // Gerar CU2 para cada disco se necessário
+    if (createMultiDiscCheck->isChecked()) {
+        for (const auto& info : discInfos) {
+            // Criar um Game temporário para cada disco
+            Game tempGame(
+                info.discName.toStdString(),
+                info.discPath.toStdString(),
+                game.getId(),
+                1,
+                std::vector<std::string>(),
+                CueSheet(),
+                false,
+                false
+            );
+            
+            // Gerar CU2
+            generateCu2File(tempGame);
+        }
+    }
+}
+
+void MainWindow::mergeBinFiles(Game& game) {
+    QDir gameDir(QString::fromStdString(game.getDirectoryPath()));
+    QString gameName = QString::fromStdString(game.getDirectoryName());
+    
+    // Obter lista de BINs ordenada pelo CUE
+    std::vector<QString> binFiles;
+    QString cuePath = gameDir.filePath(gameName + ".cue");
+    
+    if (!QFile::exists(cuePath)) {
+        throw std::runtime_error("Arquivo CUE não encontrado");
+    }
+    
+    // Ler arquivo CUE para obter ordem dos BINs
+    QFile cueFile(cuePath);
+    if (!cueFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        throw std::runtime_error("Não foi possível abrir arquivo CUE");
+    }
+    
+    QTextStream in(&cueFile);
+    QStringList cueLines;
+    while (!in.atEnd()) {
+        cueLines.append(in.readLine());
+    }
+    cueFile.close();
+    
+    // Extrair nomes dos arquivos BIN
+    QRegularExpression fileRegex("FILE\\s+\"([^\"]+)\"");
+    for (const QString& line : cueLines) {
+        QRegularExpressionMatch match = fileRegex.match(line);
+        if (match.hasMatch()) {
+            binFiles.push_back(match.captured(1));
+        }
+    }
+    
+    if (binFiles.empty()) {
+        throw std::runtime_error("Nenhum arquivo BIN encontrado no CUE");
+    }
+    
+    // Criar arquivo BIN de saída
+    QString outputPath = gameDir.filePath(gameName + "_merged.bin");
+    QFile outputFile(outputPath);
+    if (!outputFile.open(QIODevice::WriteOnly)) {
+        throw std::runtime_error("Não foi possível criar arquivo BIN de saída");
+    }
+    
+    // Merge dos arquivos
+    qint64 totalSize = 0;
+    for (const QString& binName : binFiles) {
+        QString binPath = gameDir.filePath(binName);
+        QFile binFile(binPath);
+        
+        if (!binFile.open(QIODevice::ReadOnly)) {
+            outputFile.close();
+            throw std::runtime_error("Erro ao abrir arquivo BIN: " + binName.toStdString());
+        }
+        
+        // Copiar dados
+        const qint64 bufferSize = 1024 * 1024; // 1MB buffer
+        char buffer[bufferSize];
+        qint64 bytesRead;
+        
+        while ((bytesRead = binFile.read(buffer, bufferSize)) > 0) {
+            if (outputFile.write(buffer, bytesRead) != bytesRead) {
+                binFile.close();
+                outputFile.close();
+                throw std::runtime_error("Erro ao escrever no arquivo de saída");
+            }
+            totalSize += bytesRead;
+        }
+        
+        binFile.close();
+    }
+    
+    outputFile.close();
+    
+    // Renomear arquivo merged para o nome final
+    QString finalPath = gameDir.filePath(gameName + ".bin");
+    if (QFile::exists(finalPath)) {
+        QFile::remove(finalPath);
+    }
+    QFile::rename(outputPath, finalPath);
+    
+    // Remover arquivos BIN originais
+    for (const QString& binName : binFiles) {
+        QString binPath = gameDir.filePath(binName);
+        QFile::remove(binPath);
+    }
+    
+    // Atualizar o CUE file
+    QString newCuePath = gameDir.filePath(gameName + "_new.cue");
+    QFile newCueFile(newCuePath);
+    if (!newCueFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        throw std::runtime_error("Não foi possível criar novo arquivo CUE");
+    }
+    
+    QTextStream out(&newCueFile);
+    out << "FILE \"" << gameName << ".bin\" BINARY\n";
+    
+    // Extrair informações de tracks do CUE original
+    QRegularExpression trackRegex("\\s*TRACK\\s+(\\d+)\\s+(\\w+)");
+    for (const QString& line : cueLines) {
+        QRegularExpressionMatch match = trackRegex.match(line);
+        if (match.hasMatch()) {
+            out << "  TRACK " << match.captured(1) << " " << match.captured(2) << "\n";
+        }
+    }
+    
+    newCueFile.close();
+    
+    // Substituir CUE original
+    QFile::remove(cuePath);
+    QFile::rename(newCuePath, cuePath);
+}
+
+void MainWindow::fixGameName(Game& game) {
+    QString oldName = QString::fromStdString(game.getDirectoryName());
+    QString newName = oldName;
+    
+    // Remover caracteres inválidos
+    newName.replace(QRegularExpression("[.\\/:*?\"<>|]"), "_");
+    
+    // Limitar tamanho a 60 caracteres
+    if (newName.length() > 60) {
+        newName = newName.left(60);
+    }
+    
+    if (oldName != newName) {
+        QDir dir(QString::fromStdString(game.getDirectoryPath()));
+        QDir parentDir = dir;
+        parentDir.cdUp();
+        
+        // Renomear diretório
+        if (parentDir.rename(oldName, newName)) {
+            game.setDirectoryName(newName.toStdString());
+            game.setDirectoryPath((parentDir.absolutePath() + "/" + newName).toStdString());
+        }
+    }
+}
+
+void MainWindow::autoRenameGame(Game& game) {
+    QString oldName = QString::fromStdString(game.getDirectoryName());
+    QString gameId = QString::fromStdString(game.getId());
+    
+    // Buscar nome do jogo diretamente
+    QString newName;
+    
+    // Tentar obter o nome do banco de dados
+    QSqlQuery query;
+    query.prepare("SELECT title FROM games WHERE id = :id");
+    query.bindValue(":id", gameId);
+    
+    if (query.exec() && query.next()) {
+        newName = query.value("title").toString();
+    } else {
+        // Se não encontrou no banco, usa o ID do jogo
+        newName = gameId;
+    }
+    
+    // Limpar nome
+    newName.replace(QRegularExpression("[.\\/:*?\"<>|]"), "_");
+    if (newName.length() > 60) {
+        newName = newName.left(60);
+    }
+    
+    if (oldName != newName && !newName.isEmpty()) {
+        QDir dir(QString::fromStdString(game.getDirectoryPath()));
+        QDir parentDir = dir;
+        parentDir.cdUp();
+        
+        // Renomear diretório
+        if (parentDir.rename(oldName, newName)) {
+            game.setDirectoryName(newName.toStdString());
+            game.setDirectoryPath((parentDir.absolutePath() + "/" + newName).toStdString());
+        }
+    }
+}
+
+void MainWindow::generateCu2File(const Game& game) {
+    QString dirPath = QString::fromStdString(game.getDirectoryPath());
+    QString gameName = QString::fromStdString(game.getDirectoryName());
+    QString cu2Path = dirPath + "/" + gameName + ".cu2";
+    
+    // Verificar se já existe um arquivo CU2
+    if (QFile::exists(cu2Path)) {
+        // CU2 já existe, apenas remover o CUE se existir
+        QString cuePath = dirPath + "/" + gameName + ".cue";
+        if (QFile::exists(cuePath)) {
+            QFile::remove(cuePath);
+        }
+        return;
+    }
+    
+    // Verificar se existe um arquivo BIN
+    QString binPath = dirPath + "/" + gameName + ".bin";
+    if (!QFile::exists(binPath)) {
+        // Procurar por qualquer arquivo BIN
+        QDir dir(dirPath);
+        QStringList binFiles = dir.entryList({"*.bin"}, QDir::Files);
+        if (binFiles.isEmpty()) {
+            throw std::runtime_error("Nenhum arquivo BIN encontrado");
+        }
+        binPath = dirPath + "/" + binFiles.first();
+    }
+    
+    // Criar arquivo CU2
+    QFile file(cu2Path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        throw std::runtime_error("Não foi possível criar arquivo CU2");
+    }
+    
+    QDataStream stream(&file);
+    stream.setByteOrder(QDataStream::LittleEndian);
+    
+    // Cabeçalho CU2 (magic number "CU2" em ASCII + 3)
+    stream.writeRawData("CU2\3", 4);
+    
+    // Versão (1)
+    stream << (quint32)1;
+    
+    // ID do jogo (10 bytes)
+    QString gameId = QString::fromStdString(game.getId());
+    QByteArray idBytes = gameId.toLatin1();
+    idBytes.resize(10, '\0'); // Garantir que tenha 10 bytes, preenchendo com zeros
+    stream.writeRawData(idBytes.constData(), 10);
+    
+    // Número de tracks (1 para jogos com um único BIN)
+    stream << (quint32)1;
+    
+    // Informações da track
+    QFileInfo binInfo(binPath);
+    QString binName = binInfo.fileName();
+    QByteArray nameBytes = binName.toLatin1();
+    nameBytes.resize(32, '\0'); // Garantir que tenha 32 bytes, preenchendo com zeros
+    stream.writeRawData(nameBytes.constData(), 32);
+    
+    // Offset (0)
+    stream << (quint32)0;
+    
+    // Tamanho do arquivo BIN
+    qint64 binSize = QFileInfo(binPath).size();
+    stream << (quint32)binSize;
+    
+    file.close();
+    
+    // Remover arquivo CUE após gerar CU2 com sucesso
+    QString cuePath = dirPath + "/" + gameName + ".cue";
+    if (QFile::exists(cuePath)) {
+        QFile::remove(cuePath);
+    }
+    
+    // Procurar e remover qualquer outro arquivo CUE no diretório
+    QDir dir(dirPath);
+    QStringList cueFiles = dir.entryList({"*.cue"}, QDir::Files);
+    for (const QString& cueFile : cueFiles) {
+        QFile::remove(dirPath + "/" + cueFile);
+    }
+}
+
+// Adicionar este método para habilitar/desabilitar a interface
+void MainWindow::setUiEnabled(bool enabled) {
+    // Desabilitar/habilitar todos os controles relevantes
+    selectDirButton->setEnabled(enabled);
+    searchBox->setEnabled(enabled);
+    processButton->setEnabled(enabled);
+    gameTable->setEnabled(enabled);
+    
+    // Desabilitar/habilitar checkboxes
+    mergeBinFilesCheck->setEnabled(enabled);
+    cu2ForAllCheck->setEnabled(enabled);
+    fixInvalidNameCheck->setEnabled(enabled);
+    autoRenameCheck->setEnabled(enabled);
+    addCoverArtCheck->setEnabled(enabled);
+    createMultiDiscCheck->setEnabled(enabled);
+    
+    // Forçar atualização da interface
+    QApplication::processEvents();
 } 

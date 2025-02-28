@@ -496,4 +496,22 @@ Game Database::getGame(const std::string& gameId) {
     );
 }
 
+QString Database::getGameTitle(const QString& gameId) {
+    if (!db.isOpen()) {
+        if (!openDatabase()) {
+            return QString();
+        }
+    }
+    
+    QSqlQuery query(db);
+    query.prepare("SELECT title FROM games WHERE id = :id");
+    query.bindValue(":id", gameId);
+    
+    if (query.exec() && query.next()) {
+        return query.value("title").toString();
+    }
+    
+    return QString();
+}
+
 // ... outros métodos serão implementados conforme necessário ... 

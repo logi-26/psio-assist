@@ -65,11 +65,15 @@ private:
     void showGameDetails(const Game &game);
     bool fixCueFile(Game& game);
     void processGame(const Game& game);
-    QString generateCu2File(const Game &game);
+    void generateCu2File(const Game& game);
     std::string extractGameId(const QString& binPath);
     bool isValidGameName(const std::string& name);
     bool isMultiDisc(const Game& game);
     void processMultiDisc(Game& game);
+    void mergeBinFiles(Game& game);
+    void fixGameName(Game& game);
+    void autoRenameGame(Game& game);
+    void setUiEnabled(bool enabled);
 
     // UI Elements
     QWidget *centralWidget;
