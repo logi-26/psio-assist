@@ -19,11 +19,24 @@
 #include "uiconfig.h"
 #include "preferencesdialog.h"
 #include <set>
+#include <QSqlDatabase>
+#include <QSqlQuery>
 
 namespace fs = std::filesystem;
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent)
+    : QMainWindow(parent),
+      gameTable(nullptr),
+      mergeBinFilesCheck(nullptr),
+      createCu2Check(nullptr),
+      fixInvalidNameCheck(nullptr),
+      autoRenameCheck(nullptr),
+      createMultiDiscCheck(nullptr),
+      addCoverArtCheck(nullptr),
+      processButton(nullptr),
+      statusLabel(nullptr),
+      progressBar(nullptr),
+      translator(nullptr)
 {
     // Aplicar estilo personalizado para diálogos
     setDialogStyle();
@@ -36,9 +49,6 @@ MainWindow::MainWindow(QWidget *parent)
     setupUI();
     setupMenus();
     
-    // Inicializar banco de dados
-    db.init();
-    
     // Carregar configurações do banco de dados
     loadFromDatabase();
 
@@ -48,7 +58,12 @@ MainWindow::MainWindow(QWidget *parent)
     }
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow() {
+    // Fechar a conexão com o banco de dados
+    QSqlDatabase db = QSqlDatabase::database();
+    db.close();
+    QSqlDatabase::removeDatabase(db.connectionName());
+}
 
 void MainWindow::setupUI() {
     setStyleSheet(UIConfig::MAIN_STYLE);
@@ -1403,83 +1418,106 @@ void MainWindow::updateCueFileContent(const QString& cuePath, const QString& new
 }
 
 void MainWindow::generateCu2File(const Game& game) {
+    // Obter o caminho do diretório do jogo
     QString dirPath = QString::fromStdString(game.getDirectoryPath());
-    QString gameName = QString::fromStdString(game.getDirectoryName());
-    QString cu2Path = dirPath + "/" + gameName + ".cu2";
     
-    // Verificar se já existe um arquivo CU2
-    if (QFile::exists(cu2Path)) {
-        // CU2 já existe, apenas remover o CUE se existir
-        QString cuePath = dirPath + "/" + gameName + ".cue";
-        if (QFile::exists(cuePath)) {
-            QFile::remove(cuePath);
-        }
+    // Encontrar todos os arquivos .bin no diretório
+    QDir dir(dirPath);
+    QStringList binFiles = dir.entryList({"*.bin"}, QDir::Files);
+    
+    // Se não houver arquivos .bin, não há nada a fazer
+    if (binFiles.isEmpty()) {
+        qDebug() << "Nenhum arquivo .bin encontrado em" << dirPath;
         return;
     }
     
-    // Verificar se existe um arquivo BIN
-    QString binPath = dirPath + "/" + gameName + ".bin";
-    if (!QFile::exists(binPath)) {
-        // Procurar por qualquer arquivo BIN
-        QDir dir(dirPath);
-        QStringList binFiles = dir.entryList({"*.bin"}, QDir::Files);
-        if (binFiles.isEmpty()) {
-            throw std::runtime_error("Nenhum arquivo BIN encontrado");
+    // Para cada arquivo .bin, criar um arquivo .cu2 correspondente
+    for (const QString& binFile : binFiles) {
+        // Obter o caminho completo do arquivo .bin
+        QString binPath = dir.filePath(binFile);
+        
+        // Criar o nome do arquivo .cu2
+        QString cu2File = binFile;
+        cu2File.replace(".bin", ".cu2", Qt::CaseInsensitive);
+        QString cu2Path = dir.filePath(cu2File);
+        
+        // Encontrar o arquivo .cue correspondente
+        QString cueFile = binFile;
+        cueFile.replace(".bin", ".cue", Qt::CaseInsensitive);
+        QString cuePath = dir.filePath(cueFile);
+        
+        qDebug() << "Gerando arquivo CU2:" << cu2Path;
+        
+        // Obter o tamanho do arquivo .bin
+        QFile binFileObj(binPath);
+        if (!binFileObj.open(QIODevice::ReadOnly)) {
+            qDebug() << "Erro ao abrir o arquivo .bin:" << binPath;
+            continue;
         }
-        binPath = dirPath + "/" + binFiles.first();
-    }
-    
-    // Criar arquivo CU2
-    QFile file(cu2Path);
-    if (!file.open(QIODevice::WriteOnly)) {
-        throw std::runtime_error("Não foi possível criar arquivo CU2");
-    }
-    
-    QDataStream stream(&file);
-    stream.setByteOrder(QDataStream::LittleEndian);
-    
-    // Cabeçalho CU2 (magic number "CU2" em ASCII + 3)
-    stream.writeRawData("CU2\3", 4);
-    
-    // Versão (1)
-    stream << (quint32)1;
-    
-    // ID do jogo (10 bytes)
-    QString gameId = QString::fromStdString(game.getId());
-    QByteArray idBytes = gameId.toLatin1();
-    idBytes.resize(10, '\0'); // Garantir que tenha 10 bytes, preenchendo com zeros
-    stream.writeRawData(idBytes.constData(), 10);
-    
-    // Número de tracks (1 para jogos com um único BIN)
-    stream << (quint32)1;
-    
-    // Informações da track
-    QFileInfo binInfo(binPath);
-    QString binName = binInfo.fileName();
-    QByteArray nameBytes = binName.toLatin1();
-    nameBytes.resize(32, '\0'); // Garantir que tenha 32 bytes, preenchendo com zeros
-    stream.writeRawData(nameBytes.constData(), 32);
-    
-    // Offset (0)
-    stream << (quint32)0;
-    
-    // Tamanho do arquivo BIN
-    qint64 binSize = QFileInfo(binPath).size();
-    stream << (quint32)binSize;
-    
-    file.close();
-    
-    // Remover arquivo CUE após gerar CU2 com sucesso
-    QString cuePath = dirPath + "/" + gameName + ".cue";
-    if (QFile::exists(cuePath)) {
-        QFile::remove(cuePath);
-    }
-    
-    // Procurar e remover qualquer outro arquivo CUE no diretório
-    QDir dir(dirPath);
-    QStringList cueFiles = dir.entryList({"*.cue"}, QDir::Files);
-    for (const QString& cueFile : cueFiles) {
-        QFile::remove(dirPath + "/" + cueFile);
+        
+        qint64 binSize = binFileObj.size();
+        binFileObj.close();
+        
+        // Calcular o número de setores (cada setor tem 2352 bytes)
+        int sectors = binSize / 2352;
+        
+        // Calcular o tempo total em formato MM:SS:FF (minutos:segundos:frames)
+        // Cada segundo tem 75 frames
+        int totalFrames = sectors;
+        int minutes = totalFrames / (75 * 60);
+        int seconds = (totalFrames / 75) % 60;
+        int frames = totalFrames % 75;
+        
+        qDebug() << "Tamanho do arquivo .bin:" << binSize << "bytes";
+        qDebug() << "Número de setores:" << sectors;
+        qDebug() << "Tempo total:" << minutes << ":" << seconds << ":" << frames;
+        
+        // Criar o arquivo .cu2
+        QFile cu2FileObj(cu2Path);
+        if (!cu2FileObj.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            qDebug() << "Erro ao criar o arquivo .cu2:" << cu2Path;
+            continue;
+        }
+        
+        // Escrever o conteúdo do arquivo .cu2 em formato de texto
+        QTextStream stream(&cu2FileObj);
+        
+        // Escrever o cabeçalho
+        stream << "ntracks 1\n";
+        
+        // Escrever o tamanho total
+        stream << QString("size\t   %1:%2:%3\n")
+                  .arg(minutes, 2, 10, QChar('0'))
+                  .arg(seconds, 2, 10, QChar('0'))
+                  .arg(frames, 2, 10, QChar('0'));
+        
+        // Escrever o início dos dados (geralmente 00:02:00 para jogos de PlayStation)
+        stream << "data1\t   00:02:00\n\n";
+        
+        // Escrever o final da faixa
+        // O final da faixa é o tamanho total + 2 segundos (150 frames)
+        int endFrames = totalFrames + 150;
+        int endMinutes = endFrames / (75 * 60);
+        int endSeconds = (endFrames / 75) % 60;
+        int endFramesPart = endFrames % 75;
+        
+        stream << QString("trk end\t %1:%2:%3\n")
+                  .arg(endMinutes, 2, 10, QChar('0'))
+                  .arg(endSeconds, 2, 10, QChar('0'))
+                  .arg(endFramesPart, 2, 10, QChar('0'));
+        
+        cu2FileObj.close();
+        
+        qDebug() << "Arquivo CU2 gerado com sucesso:" << cu2Path;
+        
+        // Excluir o arquivo .cue após a geração bem-sucedida do arquivo .cu2
+        if (QFile::exists(cuePath)) {
+            if (QFile::remove(cuePath)) {
+                qDebug() << "Arquivo CUE excluído com sucesso:" << cuePath;
+            } else {
+                qDebug() << "Erro ao excluir o arquivo CUE:" << cuePath;
+            }
+        }
     }
 }
 

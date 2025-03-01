@@ -106,6 +106,13 @@ private:
     QCheckBox *cu2ForAllCheck;
     QCheckBox *autoRenameCheck;
     QCheckBox *createMultiDiscCheck;
+    QCheckBox *createCu2Check;
+
+    // Tradutor
+    QTranslator *translator;
+
+    // Idioma atual
+    QString currentLanguage = "pt_BR";
 };
 
 #endif // MAINWINDOW_H 
