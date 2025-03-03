@@ -1,0 +1,29 @@
+name: Build Windows
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v2
+      with:
+        version: '6.2.4'
+        host: 'windows'
+        target: 'desktop'
+        arch: 'win64_mingw'
+    
+    - name: Build
+      run: |
+        mkdir build
+        cd build
+        cmake .. -G "MinGW Makefiles"
+        mingw32-make
