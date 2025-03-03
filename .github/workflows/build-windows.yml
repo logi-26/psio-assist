@@ -21,7 +21,7 @@ jobs:
         host: 'windows'
         target: 'desktop'
         arch: 'win64_msvc2019_64'
-        tools: 'tools_mingw,qt5_tools'
+        tools: 'tools_mingw'
         cache: true
     
     - name: Setup MSVC
