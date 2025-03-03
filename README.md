@@ -13,19 +13,22 @@ Works on **Linux, macOS, and Windows**.
 
 ## Features
 
-This application organizes and standardizes PlayStation 1 games into a format acceptable by the PSIO device. It performs the following tasks:
+- User-friendly graphical interface
+- Support for Windows, Linux, and macOS
+- ROM management
+- Game transfer to PSIO
 
-- Merges **multi-BIN** games into a single BIN file.
-- Converts **CUE** files to the **CU2** format.
-- Works in **batch mode**, processing all BIN/CUE files in the selected directory and its subdirectories.
-- Ensures that **game names**:
-  - Do not exceed **60 characters**.
-  - Do not contain **dots or slashes**.
-- Generates the **MULTIDISC.LST** file for multi-disc games.
-- **Does not modify the original BIN/CUE files**.
-- **Downloads cover images** for games that do not have them in their directories.
+## Download
 
----
+You can download the latest version of PSIO Assist directly from GitHub Actions artifacts:
+
+1. Go to the [Actions page](https://github.com/gabrielBitts/psio-assist-ex/actions) of the repository
+2. Click on the most recent run of the "Build for Windows, Linux and macOS" workflow
+3. Scroll down to the "Artifacts" section at the bottom of the page
+4. Download the artifact corresponding to your operating system:
+   - Windows: `psio-assist-windows`
+   - Linux: `psio-assist-linux`
+   - macOS: `psio-assist-macos-app` (App Bundle) or `psio-assist-macos-dmg` (Disk image)
 
 ## Dependencies
 
