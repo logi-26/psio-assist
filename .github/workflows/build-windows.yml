@@ -5,25 +5,41 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
     
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     
     - name: Install Qt
-      uses: jurplel/install-qt-action@v2
+      uses: jurplel/install-qt-action@v3
       with:
-        version: '6.2.4'
+        version: '6.5.3'
         host: 'windows'
         target: 'desktop'
-        arch: 'win64_mingw'
+        arch: 'win64_msvc2019_64'
+        tools: 'tools_mingw,qt5_tools'
+        cache: true
     
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+      
+    - name: Create Build Directory
+      run: mkdir build
+      
+    - name: Configure CMake
+      working-directory: ./build
+      run: cmake .. -G "Visual Studio 17 2022" -A x64
+      
     - name: Build
-      run: |
-        mkdir build
-        cd build
-        cmake .. -G "MinGW Makefiles"
-        mingw32-make
+      working-directory: ./build
+      run: cmake --build . --config Release
+      
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: psio-assist-windows
+        path: build/Release/*.exe
