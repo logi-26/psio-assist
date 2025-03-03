@@ -1,0 +1,45 @@
+name: Build Windows
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v3
+      with:
+        version: '6.5.3'
+        host: 'windows'
+        target: 'desktop'
+        arch: 'win64_msvc2019_64'
+        tools: 'tools_mingw'
+        cache: true
+    
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+      
+    - name: Create Build Directory
+      run: mkdir build
+      
+    - name: Configure CMake
+      working-directory: ./build
+      run: cmake .. -G "Visual Studio 17 2022" -A x64
+      
+    - name: Build
+      working-directory: ./build
+      run: cmake --build . --config Release
+      
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: psio-assist-windows
+        path: build/Release/*.exe
