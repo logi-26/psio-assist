@@ -1,4 +1,4 @@
-name: Build Windows
+name: Build for Windows, Linux and macOS
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
     
     steps:
@@ -43,3 +43,115 @@ jobs:
       with:
         name: psio-assist-windows
         path: build/Release/*.exe
+
+  build-linux:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libgl1-mesa-dev
+    
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v3
+      with:
+        version: '6.5.3'
+        host: 'linux'
+        target: 'desktop'
+        arch: 'gcc_64'
+        cache: true
+    
+    - name: Create Build Directory
+      run: mkdir -p build
+    
+    - name: Configure and Build
+      run: |
+        cd build
+        cmake ..
+        cmake --build . -j$(nproc)
+    
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: psio-assist-linux
+        path: build/psio-assist
+
+  build-macos:
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v3
+      with:
+        version: '6.5.3'
+        host: 'mac'
+        target: 'desktop'
+        arch: 'clang_64'
+        cache: true
+    
+    - name: Create Build Directory
+      run: mkdir -p build
+    
+    - name: Configure and Build
+      run: |
+        cd build
+        cmake ..
+        cmake --build . -j$(sysctl -n hw.ncpu)
+    
+    - name: Create App Bundle
+      working-directory: ./build
+      run: |
+        # Criar diretório para o app bundle se não existir
+        mkdir -p psio-assist.app/Contents/MacOS
+        mkdir -p psio-assist.app/Contents/Resources
+        
+        # Copiar o executável
+        cp psio-assist psio-assist.app/Contents/MacOS/
+        
+        # Criar arquivo Info.plist básico
+        cat > psio-assist.app/Contents/Info.plist << EOF
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>CFBundleExecutable</key>
+            <string>psio-assist</string>
+            <key>CFBundleIconFile</key>
+            <string>icon.icns</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.yourcompany.psio-assist</string>
+            <key>CFBundleInfoDictionaryVersion</key>
+            <string>6.0</string>
+            <key>CFBundleName</key>
+            <string>PSIO Assist</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>1.0</string>
+            <key>CFBundleVersion</key>
+            <string>1</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+        </dict>
+        </plist>
+        EOF
+        
+        # Criar um arquivo DMG
+        hdiutil create -volname "PSIO Assist" -srcfolder psio-assist.app -ov -format UDZO psio-assist.dmg
+    
+    - name: Upload App Bundle
+      uses: actions/upload-artifact@v4
+      with:
+        name: psio-assist-macos-app
+        path: build/psio-assist.app
+        
+    - name: Upload DMG
+      uses: actions/upload-artifact@v4
+      with:
+        name: psio-assist-macos-dmg
+        path: build/psio-assist.dmg
