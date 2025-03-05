@@ -52,12 +52,54 @@ from cue2cu2 import set_cu2_error_log_path, start_cue2cu2
 from db import ensure_database_exists, select, extract_game_cover_blob
 
 REGION_CODES = ['DTLS_', 'SCES_', 'SLES_', 'SLED_', 'SCED_', 'SCUS_', 'SLUS_', 'SLPS_', 'SCAJ_', 'SLKA_', 'SLPM_', 'SCPS_', 'SCPM_', 'PCPX_', 'PAPX_', 'PTPX_', 'LSP0_', 'LSP1_', 'LSP2_', 'LSP9_', 'SIPS_', 'ESPM_', 'SCZS_', 'SPUS_', 'PBPX_', 'LSP_']
-CURRENT_REVISION = 0.2
+CURRENT_REVISION = 0.9
 PROGRESS_STATUS = 'Status:'
 MAX_GAME_NAME_LENGTH = 56
 
+# Global variables
 game_list = []
 covers_path = None
+
+# *****************************************************************************************************************
+def _get_stored_theme():
+    try:
+        with open(CONFIG_FILE_PATH) as config_file:
+            data = load(config_file)
+            return data['theme']
+    except:
+        return 'darkly'  # default theme if config file doesn't exist
+# *****************************************************************************************************************
+
+# Create the main window
+window = ttk.Window(title=f'PSIO Game Assistant v{CURRENT_REVISION}', themename=_get_stored_theme(), size=[800,710])
+style = Style()
+
+# Configure style for progress bars to match button height
+style.configure(
+    "primary.Horizontal.TProgressbar",
+    thickness=28  # Ajustado para corresponder à altura dos botões
+)
+
+style.configure(
+    "primary.Horizontal.TFloodgauge",
+    thickness=28  # Ajustado para corresponder à altura dos botões
+)
+
+# Create Tkinter variables after window initialization
+src_path = StringVar(value='')
+merge_bin_files = BooleanVar(value=False)
+force_cu2 = BooleanVar(value=False)
+validate_game_name = BooleanVar(value=False)
+auto_rename = BooleanVar(value=False)
+add_cover_art = BooleanVar(value=False)
+create_multi_disc = BooleanVar(value=False)
+
+# Configure grid weight for main window
+window.grid_columnconfigure(0, weight=1)
+window.grid_rowconfigure(0, weight=0)  # Browse frame
+window.grid_rowconfigure(1, weight=1)  # Game list frame
+window.grid_rowconfigure(2, weight=0)  # Tools frame
+window.grid_rowconfigure(3, weight=0)  # Progress frame
 
 # Get the directory paths based on the scripts location
 script_root_dir = Path(abspath(dirname(argv[0])))
@@ -74,94 +116,103 @@ set_binmerge_error_log_path(error_log_file)
 # *****************************************************************************************************************
 # Function that processes the games
 def _process_games():
-	for game in game_list:
-		#_print_game_details(game)
+    total_games = len(game_list)
+    covers_not_found = 0
+    for index, game in enumerate(game_list):
+        game_id = game.id
+        if not game_id:
+            print(f"WARNING: Game ID is None for {game.cue_sheet.game_name}. Skipping this game.")
+            continue
 
-		game_id = game.id
-		game_name = game.cue_sheet.game_name
+        game_name = game.cue_sheet.game_name
 
-		game_full_path = join(game.directory_path, game.directory_name)
-		cue_full_path = join(game_full_path, game.cue_sheet.file_name)
+        game_full_path = join(game.directory_path, game.directory_name)
+        cue_full_path = join(game_full_path, game.cue_sheet.file_name)
 
-		label_progress.configure(text = f'{PROGRESS_STATUS} Processing - {game_name}')
+        label_progress.configure(text=f'{PROGRESS_STATUS} In Progress - {game_name}')
 
-		print(f'GAME_ID: {game_id}')
-		print(f'GAME_NAME: {game_name}')
-		print(f'GAME_PATH: {game_full_path}')
-		print(f'CUE_PATH: {cue_full_path}')
+        print(f'GAME_ID: {game_id}')
+        print(f'GAME_NAME: {game_name}')
+        print(f'GAME_PATH: {game_full_path}')
+        print(f'CUE_PATH: {cue_full_path}')
 
-		if merge_bin_files.get() and len(game.cue_sheet.bin_files) > 1:
-			print('MERGING BIN FILES...')
-			label_progress.configure(text = f'{PROGRESS_STATUS} Merging bin files - {game_name}')
-			_merge_bin_files(game, game_name, game_full_path, cue_full_path)
-			start_cue2cu2(cue_full_path, f'{game_name}.bin')
+        if merge_bin_files.get() and len(game.cue_sheet.bin_files) > 1:
+            print('MERGING BIN FILES...')
+            label_progress.configure(text=f'{PROGRESS_STATUS} In Progress - Merging bin files - {game_name}')
+            _merge_bin_files(game, game_name, game_full_path, cue_full_path)
+            start_cue2cu2(cue_full_path, f'{game_name}.bin')
 
-		if force_cu2.get() and not game.cu2_present:
-			print('GENERATING CU2...')
-			label_progress.configure(text = f'{PROGRESS_STATUS} Generating cu2 file - {game_name}')
-			start_cue2cu2(cue_full_path, f'{game_name}.bin')
+        if force_cu2.get() and not game.cu2_present:
+            print('GENERATING CU2...')
+            label_progress.configure(text=f'{PROGRESS_STATUS} In Progress - Generating cu2 file - {game_name}')
+            start_cue2cu2(cue_full_path, f'{game_name}.bin')
 
-		if auto_rename.get():
-			print('RENAMING THE GAME FILES...')
-			label_progress.configure(text = f'{PROGRESS_STATUS} Renaming - {game_name}')
-			redump_game_name = _game_name_validator(_get_redump_name(game_id))
-			_rename_game(game_full_path, game_name, redump_game_name)
+        if auto_rename.get():
+            print('RENAMING THE GAME FILES...')
+            label_progress.configure(text=f'{PROGRESS_STATUS} In Progress - Renaming - {game_name}')
+            try:
+                redump_game_name = _game_name_validator(_get_redump_name(game_id))
+                if redump_game_name:
+                    _rename_game(game_full_path, game_name, redump_game_name)
+            except Exception as e:
+                print(f"WARNING: Could not rename game {game_name}. Skipping this game. Error: {e}")
 
-		if validate_game_name.get() and not auto_rename.get():
-			if len(game_name) > MAX_GAME_NAME_LENGTH or '.' in game_name:
-				print('VALIDATING THE GAME NAME...')
-				label_progress.configure(text = f'{PROGRESS_STATUS} Validating name - {game_name}')
-				new_game_name = _game_name_validator(game)
-				print(f'new_game_name: {new_game_name}')
-				if new_game_name != game_name:
-					_rename_game(game_full_path, game_name, new_game_name)
+        if validate_game_name.get() and not auto_rename.get():
+            if len(game_name) > MAX_GAME_NAME_LENGTH or '.' in game_name:
+                print('VALIDATING THE GAME NAME...')
+                label_progress.configure(text=f'{PROGRESS_STATUS} In Progress - Validating name - {game_name}')
+                new_game_name = _game_name_validator(game_name)
+                print(f'new_game_name: {new_game_name}')
+                if new_game_name != game_name:
+                    _rename_game(game_full_path, game_name, new_game_name)
 
-		if add_cover_art.get() and not game.cover_art_present:
-			print('ADDING THE GAME COVER ART...')
-			label_progress.configure(text = f'{PROGRESS_STATUS} Adding cover art - {game_name}')
-			_copy_game_cover(game_full_path, game_id, game_name)
+        if add_cover_art.get() and not game.cover_art_present:
+            try:
+                print('ADDING THE GAME COVER ART...')
+                label_progress.configure(text=f'{PROGRESS_STATUS} In Progress - Adding cover art - {game_name}')
+                _copy_game_cover(game_full_path, game_id, game_name)
+            except Exception as e:
+                print(f"WARNING: Could not add cover art for {game_name}. Skipping this game. Error: {e}")
+                covers_not_found += 1
+
+        # Update the progress bar
+        progress = int((index + 1) / total_games * 100)
+        _update_progress_bar(progress)
+
+    label_progress.configure(text=f'{PROGRESS_STATUS} Done')
 
 
-
-	#if create_multi_disc:
-
-
-
-
-		print()
-
-	label_progress.configure(text = PROGRESS_STATUS)
 # *****************************************************************************************************************
 
 
 # *****************************************************************************************************************
 # Function to merge multi-bin files
 def _merge_bin_files(game, game_name, game_full_path, cue_full_path):
-	# Create a temp directory to store the merged bin file
-	temp_game_dir = join(game_full_path, 'temp_dir')
-	if not exists(temp_game_dir):
-		try:
-			mkdir(temp_game_dir)
-		except OSError as error:
-			pass
-	if exists(temp_game_dir):
-		label_progress.configure(text = f'{PROGRESS_STATUS} Merging bin files')
-		start_bin_merge(cue_full_path, game_name, temp_game_dir)
+    # Create a temp directory to store the merged bin file
+    temp_game_dir = join(game_full_path, 'temp_dir')
+    if not exists(temp_game_dir):
+        try:
+            mkdir(temp_game_dir)
+        except OSError as error:
+            pass
+    if exists(temp_game_dir):
+        label_progress.configure(text=f'{PROGRESS_STATUS} Merging bin files')
+        start_bin_merge(cue_full_path, game_name, temp_game_dir)
 
-		# If the bin files have been merged and the new cue file has been generated
-		temp_bin_path = join(temp_game_dir, f'{game_name}.bin')
-		temp_cue_path = join(temp_game_dir, f'{game_name}.cue')
-		if exists(temp_bin_path) and exists(temp_cue_path):
-			# Delete the original cue_sheet and bin files
-			remove(cue_full_path)
-			for orginal_bin_file in game.cue_sheet.bin_files:
-				remove(orginal_bin_file.file_path)
+        # If the bin files have been merged and the new cue file has been generated
+        temp_bin_path = join(temp_game_dir, f'{game_name}.bin')
+        temp_cue_path = join(temp_game_dir, f'{game_name}.cue')
+        if exists(temp_bin_path) and exists(temp_cue_path):
+            # Delete the original cue_sheet and bin files
+            remove(cue_full_path)
+            for original_bin_file in game.cue_sheet.bin_files:
+                remove(join(game_full_path, original_bin_file.file_name))
 
-			# Move the newly merged bin_file and cue_sheet back into the game directory
-			move(temp_bin_path, join(game_full_path, f'{game_name}.bin'))
-			move(temp_cue_path, join(game_full_path, f'{game_name}.cue'))
+            # Move the newly merged bin_file and cue_sheet back into the game directory
+            move(temp_bin_path, join(game_full_path, f'{game_name}.bin'))
+            move(temp_cue_path, join(game_full_path, f'{game_name}.cue'))
 
-		rmtree(temp_game_dir)
+        rmtree(temp_game_dir)
 # *****************************************************************************************************************
 
 
@@ -198,17 +249,15 @@ def _rename_game(game_full_path, game_name, new_game_name):
 
 
 # *****************************************************************************************************************
-# Function to validate the game name (ensure irt is not too long and does not contain periods)
-def _game_name_validator(game):
-	game_name = game.cue_sheet.game_name
-	if '.' in game_name:
-		game_name = game_name.replace('.', '_')
+# Function to validate the game name (ensure it is not too long and does not contain periods)
+def _game_name_validator(game_name):
+    if '.' in game_name:
+        game_name = game_name.replace('.', '_')
 
-	if len(game_name) > MAX_GAME_NAME_LENGTH:
-		game_name = game_name[:MAX_GAME_NAME_LENGTH]
+    if len(game_name) > MAX_GAME_NAME_LENGTH:
+        game_name = game_name[:MAX_GAME_NAME_LENGTH]
 
-	game.cue_sheet.new_name = game_name
-	return game_name
+    return game_name
 # *****************************************************************************************************************
 
 
@@ -264,26 +313,26 @@ def _generate_multidisc_file(game_dir):
 # *****************************************************************************************************************
 # Function to get the game name (using names from redump and the psx data-centre)
 def _get_redump_name(game_id):
-	response = select(f'''SELECT name FROM games WHERE game_id = "{game_id.replace('-','_')}";''')
-	if response is not None and response != []:
-		game_name = response[0][0]
+    response = select(f'''SELECT name, disc_number FROM games WHERE game_id = "{game_id.replace('-','_')}";''')
+    if response is not None and response != []:
+        game_name, disc_number = response[0]
 
-		# Ensure that the game name (including disc number and extension) is not more than 60 chars
-		if validate_game_name.get():
-			if int(line[2]) > 0:
-				if len(game_name) <= 47:
-					return f'{game_name} (Disc {line[2]})'
-				else:
-					return f'{game_name[:47]} (Disc {line[2]})'
-			else:
-				if len(game_name) <= 47:
-					return game_name
-				else:
-					return f'{game_name[:47]}'
-		else:
-			return game_name
+        # Ensure that the game name (including disc number and extension) is not more than 60 chars
+        if validate_game_name.get():
+            if int(disc_number) > 0:
+                if len(game_name) <= 47:
+                    return f'{game_name} (Disc {disc_number})'
+                else:
+                    return f'{game_name[:47]} (Disc {disc_number})'
+            else:
+                if len(game_name) <= 47:
+                    return game_name
+                else:
+                    return f'{game_name[:47]}'
+        else:
+            return game_name
 
-	return ''
+    return ''
 # *****************************************************************************************************************
 
 
@@ -537,6 +586,7 @@ def _poo():
 
 
 # *****************************************************************************************************************
+# Update the _display_game_list function to include the new column with relative directory path
 def _display_game_list():
 	bools = ('No','Yes')
 	for count, game in enumerate(game_list):
@@ -547,7 +597,8 @@ def _display_game_list():
 		name_valid = bools[len(game.cue_sheet.game_name) <= MAX_GAME_NAME_LENGTH and '.' not in game.cue_sheet.game_name]
 		cu2_present = bools[game.cu2_present]
 		bmp_present = bools[game.cover_art_present]
-		treeview_game_list.insert(parent='', index=count, iid=count, text='', values=(game_id, game_name, disc_number, number_of_bins, name_valid, cu2_present, bmp_present))
+		relative_game_directory = join(Path(game.directory_path).name, game.directory_name)  # Relative directory path
+		treeview_game_list.insert(parent='', index=count, iid=count, text='', values=(game_id, game_name, disc_number, number_of_bins, name_valid, cu2_present, bmp_present, relative_game_directory))  # Include the new field
 # *****************************************************************************************************************
 
 
@@ -604,13 +655,17 @@ def _update_window():
 # *****************************************************************************************************************
 # Scan button click event
 def _scan_button_clicked():
-	button_src_scan['state'] = 'disabled'
-	progress_bar_indeterminate.start(20)
+    button_src_scan['state'] = 'disabled'
+    progress_bar_indeterminate.start(20)
 
-	_parse_game_list()
+    _parse_game_list()
 
-	if force_cu2.get() or merge_bin_files.get() or add_cover_art.get() or validate_game_name.get() or auto_rename.get():
-		button_start['state'] = 'normal'
+    if force_cu2.get() or merge_bin_files.get() or add_cover_art.get() or validate_game_name.get() or auto_rename.get():
+        button_start['state'] = 'normal'
+    else:
+        progress_bar_indeterminate.stop()
+        progress_bar['value'] = 100  # Set progress bar to 100% when scan is complete
+        label_progress.configure(text=f'{PROGRESS_STATUS} Scan complete')
 # *****************************************************************************************************************
 
 
@@ -657,15 +712,6 @@ def _checkbox_changed():
 
 
 # *****************************************************************************************************************
-def _get_stored_theme():
-	data = None
-	with open(CONFIG_FILE_PATH) as config_file:
-		data = load(config_file)
-	return data['theme']
-# *****************************************************************************************************************
-
-
-# *****************************************************************************************************************
 def _store_selected_theme(theme_name):
 	with open(CONFIG_FILE_PATH, mode="w") as config_file:
 		config_file.write(dumps({"theme": theme_name}))
@@ -688,113 +734,58 @@ def _switch_theme(theme_name):
 # Run the GUI
 # *************************************************
 
-# Create the main window
-window = ttk.Window(title=f'PSIO Game Assistant v{CURRENT_REVISION}',themename=_get_stored_theme(), size=[800,710], resizable=[False, False])
-style = Style()
-
-#print(style.theme_names())
-
-src_path = StringVar()
-dest_path = StringVar()
-force_cu2 = BooleanVar()
-merge_bin_files = BooleanVar()
-add_cover_art = BooleanVar()
-validate_game_name = BooleanVar()
-auto_rename = BooleanVar()
-auto_patch = BooleanVar()
-create_multi_disc = BooleanVar()
-force_cu2.set(False)
-merge_bin_files.set(False)
-add_cover_art.set(False)
-validate_game_name.set(False)
-auto_rename.set(False)
-auto_patch.set(False)
-create_multi_disc.set(False)
-
-# create a menubar
-menubar = Menu(window)
-window.config(menu=menubar)
-
-# create the file_menu
-file_menu = Menu(
-	menubar,
-	tearoff=0
-)
-
-sub_menu = Menu(file_menu, tearoff=0)
-sub_menu.add_command(label='cyborg', command=lambda: _switch_theme('cyborg'))
-sub_menu.add_command(label='darkly', command=lambda: _switch_theme('darkly'))
-sub_menu.add_command(label='vapor', command=lambda: _switch_theme('vapor'))
-sub_menu.add_command(label='superhero', command=lambda: _switch_theme('superhero'))
-sub_menu.add_command(label='solar', command=lambda: _switch_theme('solar'))
-sub_menu.add_command(label='morph', command=lambda: _switch_theme('morph'))
-sub_menu.add_command(label='sandstone', command=lambda: _switch_theme('sandstone'))
-sub_menu.add_command(label='simplex', command=lambda: _switch_theme('simplex'))
-sub_menu.add_command(label='yeti', command=lambda: _switch_theme('yeti'))
-
-# Add the File menu to the menubar
-file_menu.add_cascade(
-	label="Color Themes",
-	menu=sub_menu
-)
-
-# Add Exit menu item
-file_menu.add_separator()
-file_menu.add_command(
-	label='Exit',
-	command=window.destroy
-)
-
-menubar.add_cascade(
-	label="File",
-	menu=file_menu,
-	underline=0
-)
-# Create the Help menu
-help_menu = Menu(
-	menubar,
-	tearoff=0
-)
-
-help_menu.add_command(label='About')
-
-# Add the Help menu to the menubar
-menubar.add_cascade(
-	label="Help",
-	menu=help_menu,
-	underline=0
-)
+# Configure grid weight for main window
+window.grid_columnconfigure(0, weight=1)
+window.grid_rowconfigure(0, weight=0)  # Browse frame
+window.grid_rowconfigure(1, weight=1)  # Game list frame
+window.grid_rowconfigure(2, weight=0)  # Tools frame
+window.grid_rowconfigure(3, weight=0)  # Progress frame
 
 #*************************************************************
-
+# Browse Frame (SD Root)
 browse_frame = Labelframe(window, text='SD Root', bootstyle="primary")
-browse_frame.place(x=15, y=10, width=770, height=110)
+browse_frame.grid(row=0, column=0, padx=15, pady=10, sticky='nsew')
+
+# Configure grid for browse frame
+browse_frame.grid_columnconfigure(0, weight=1)  # src path label
+browse_frame.grid_columnconfigure(1, weight=0)  # browse button
+browse_frame.grid_rowconfigure(0, weight=1)
+browse_frame.grid_rowconfigure(1, weight=1)
 
 # Label to display the src path
-label_src = Label(window, text=src_path.get(), width = 60, borderwidth=2, relief='solid', bootstyle="primary")
-label_src.place(x=30, y=35, width=600, height=30)
+label_src = Label(browse_frame, text=src_path.get(), borderwidth=2, relief='solid', bootstyle="primary")
+label_src.grid(row=0, column=0, padx=15, pady=(10,5), sticky='ew')
 
-# Button to browse the filesystem and select the src path
-button_src_browse = Button(window, text='Browse', bootstyle="primary", command = _browse_button_clicked)
-button_src_browse.place(x=640, y=35, width=130, height=30)
+# Button to browse the filesystem
+button_src_browse = Button(browse_frame, text='Browse', width=10, bootstyle="primary", command=_browse_button_clicked)
+button_src_browse.grid(row=0, column=1, padx=15, pady=(10,5), sticky='ew')
 
-progress_bar_indeterminate = ttk.Floodgauge(font=(None, 14, 'bold'), mask='', mode='indeterminate')
-progress_bar_indeterminate.place(x=30, y=75, width=600, height=30)
+# Progress bar and scan button
+progress_bar_indeterminate = ttk.Floodgauge(
+    browse_frame, 
+    font=(None, 14, 'bold'), 
+    mask='', 
+    mode='indeterminate',
+    bootstyle="primary"
+)
+progress_bar_indeterminate.grid(row=1, column=0, padx=15, pady=(5,10), sticky='ew')
 
-# Button to scan the game files
-button_src_scan = Button(window, text='Scan', command = _scan_button_clicked, state=DISABLED)
-button_src_scan.place(x=640, y=75, width=130, height=30)
-
-#progress_bar_indeterminate.lower()
-#button_src_scan.lower()
+button_src_scan = Button(browse_frame, text='Scan', width=10, command=_scan_button_clicked, state=DISABLED)
+button_src_scan.grid(row=1, column=1, padx=15, pady=(5,10), sticky='ew')
 
 #*************************************************************
-
+# Game List Frame
 game_list_frame = Labelframe(window, text='Files', bootstyle="primary")
-game_list_frame.place(x=15, y=140, width=770, height=350)
+game_list_frame.grid(row=1, column=0, padx=15, pady=10, sticky='nsew')
 
-treeview_game_list = Treeview(window, bootstyle='primary')
-treeview_game_list['columns']=('ID', 'Name', 'Disc Number', 'Bin Files', 'Name Valid', 'CU2', 'BMP')
+# Configure grid for game list frame
+game_list_frame.grid_columnconfigure(0, weight=1)
+game_list_frame.grid_columnconfigure(1, weight=0)
+game_list_frame.grid_rowconfigure(0, weight=1)
+
+# Treeview setup
+treeview_game_list = Treeview(game_list_frame, bootstyle='primary')
+treeview_game_list['columns'] = ('ID', 'Name', 'Disc Number', 'Bin Files', 'Name Valid', 'CU2', 'BMP', 'Directory')
 treeview_game_list.column('#0', width=0, stretch=NO)
 treeview_game_list.column('ID', anchor=CENTER, width=75)
 treeview_game_list.column('Name', anchor=CENTER, width=350)
@@ -803,6 +794,7 @@ treeview_game_list.column('Bin Files', anchor=CENTER, width=60)
 treeview_game_list.column('Name Valid', anchor=CENTER, width=75)
 treeview_game_list.column('CU2', anchor=CENTER, width=40)
 treeview_game_list.column('BMP', anchor=CENTER, width=40)
+treeview_game_list.column('Directory', anchor=CENTER, width=200)
 
 treeview_game_list.heading('#0', text='', anchor=CENTER)
 treeview_game_list.heading('ID', text='ID', anchor=CENTER)
@@ -812,53 +804,75 @@ treeview_game_list.heading('Bin Files', text='Bin Files', anchor=CENTER)
 treeview_game_list.heading('Name Valid', text='Name Valid', anchor=CENTER)
 treeview_game_list.heading('CU2', text='CU2', anchor=CENTER)
 treeview_game_list.heading('BMP', text='BMP', anchor=CENTER)
+treeview_game_list.heading('Directory', text='Directory', anchor=CENTER)
 
-scrollbar_game_list = Scrollbar(window, bootstyle="primary-round", orient=ttk.VERTICAL, command=treeview_game_list.yview)
+treeview_game_list.grid(row=0, column=0, padx=(15,0), pady=10, sticky='nsew')
+
+scrollbar_game_list = Scrollbar(game_list_frame, bootstyle="primary-round", orient=ttk.VERTICAL, command=treeview_game_list.yview)
+scrollbar_game_list.grid(row=0, column=1, pady=10, sticky='ns')
 treeview_game_list.configure(yscroll=scrollbar_game_list.set)
 
-treeview_game_list.place(x=30, y=160, width=730, height=310)
-scrollbar_game_list.place(x=760, y=160, height=310)
-
 #*************************************************************
-
+# Tools Frame
 tools_frame = Labelframe(window, text='Tools', bootstyle="primary")
-tools_frame.place(x=15, y=510, width=770, height=80)
+tools_frame.grid(row=2, column=0, padx=15, pady=10, sticky='ew')
 
-# Checkboxes for the various options
-checkbox_merge_bin = Checkbutton(window, text ='Merge Bin Files', bootstyle="round-toggle", takefocus = 0, variable=merge_bin_files, command = _checkbox_changed)
-checkbox_merge_bin.place(x=60, y=530)
+# Configure grid for tools frame - equal columns
+tools_frame.grid_columnconfigure(0, weight=1)
+tools_frame.grid_columnconfigure(1, weight=1)
+tools_frame.grid_columnconfigure(2, weight=1)
+tools_frame.grid_rowconfigure(0, weight=1)
+tools_frame.grid_rowconfigure(1, weight=1)
 
-checkbox_generate_cue = Checkbutton(window, text ='CU2 For All', bootstyle="round-toggle", takefocus = 0, variable=force_cu2, command = _checkbox_changed)
-checkbox_generate_cue.place(x=60, y=560)
+# Left column toggles
+checkbox_merge_bin = Checkbutton(tools_frame, text='Merge Bin Files', bootstyle="round-toggle", takefocus=0, variable=merge_bin_files, command=_checkbox_changed)
+checkbox_merge_bin.grid(row=0, column=0, padx=15, pady=(10,2), sticky='n')
 
-checkbox_limit_name = Checkbutton(window, text ='Fix Invalid Name', bootstyle="round-toggle", takefocus = 0, variable=validate_game_name, command = _checkbox_changed)
-checkbox_limit_name.place(x=220, y=530)
+checkbox_generate_cue = Checkbutton(tools_frame, text='CU2 For All', bootstyle="round-toggle", takefocus=0, variable=force_cu2, command=_checkbox_changed)
+checkbox_generate_cue.grid(row=1, column=0, padx=15, pady=(2,10), sticky='n')
 
-checkbox_auto_rename = Checkbutton(window, text ='Auto Rename', bootstyle="round-toggle", takefocus = 0, variable=auto_rename, command = _checkbox_changed)
-checkbox_auto_rename.place(x=220, y=560)
+# Middle column toggles
+checkbox_limit_name = Checkbutton(tools_frame, text='Fix Invalid Name', bootstyle="round-toggle", takefocus=0, variable=validate_game_name, command=_checkbox_changed)
+checkbox_limit_name.grid(row=0, column=1, padx=15, pady=(10,2), sticky='n')
 
-checkbox_add_art = Checkbutton(window, text ='Add Cover Art', bootstyle="round-toggle", takefocus = 0, variable=add_cover_art, command = _checkbox_changed)
-checkbox_add_art.place(x=370, y=530)
+checkbox_auto_rename = Checkbutton(tools_frame, text='Auto Rename', bootstyle="round-toggle", takefocus=0, variable=auto_rename, command=_checkbox_changed)
+checkbox_auto_rename.grid(row=1, column=1, padx=15, pady=(2,10), sticky='n')
 
-checkbox_create_multi_disc = Checkbutton(window, text ='Create Multi-Disc', bootstyle="round-toggle", takefocus = 0, variable=create_multi_disc, command = _checkbox_changed)
-checkbox_create_multi_disc.place(x=370, y=560)
+# Right column toggles
+checkbox_add_art = Checkbutton(tools_frame, text='Add Cover Art', bootstyle="round-toggle", takefocus=0, variable=add_cover_art, command=_checkbox_changed)
+checkbox_add_art.grid(row=0, column=2, padx=15, pady=(10,2), sticky='n')
+
+checkbox_create_multi_disc = Checkbutton(tools_frame, text='Create Multi-Disc', bootstyle="round-toggle", takefocus=0, variable=create_multi_disc, command=_checkbox_changed)
+checkbox_create_multi_disc.grid(row=1, column=2, padx=15, pady=(2,10), sticky='n')
 
 #*************************************************************
-
+# Progress Frame
 progress_frame = Labelframe(window, text='Progress', bootstyle="primary")
-progress_frame.place(x=15, y=610, width=770, height=80)
+progress_frame.grid(row=3, column=0, padx=15, pady=10, sticky='ew')
 
-# Progressbar to inform the user of the progress (using floodgauge widget from ttkbootstrap)
-progress_bar = Floodgauge(font=(None, 14, 'bold'), mask='', mode='determinate')
-progress_bar.place(x=30, y=630, width=600, height=30)
+# Configure grid for progress frame
+progress_frame.grid_columnconfigure(0, weight=1)
+progress_frame.grid_columnconfigure(1, weight=0)
+progress_frame.grid_rowconfigure(0, weight=1)
+progress_frame.grid_rowconfigure(1, weight=1)
 
-# Button to start the process
-button_start = Button(window, text='Start', command = _start_button_clicked, state=DISABLED)
-button_start.place(x=640, y=630, width=130, height=30)
+# Progress bar
+progress_bar = Floodgauge(
+    progress_frame, 
+    font=(None, 14, 'bold'), 
+    mask='', 
+    mode='determinate',
+    bootstyle="primary"
+)
+progress_bar.grid(row=0, column=0, padx=15, pady=(10,5), sticky='ew')
 
-# Label to display the progress info
-label_progress = Label(window, text=PROGRESS_STATUS, width = 120, bootstyle="primary")
-label_progress.place(x=30, y=658, width=750, height=30)
+# Start button
+button_start = Button(progress_frame, text='Start', width=10, command=_start_button_clicked, state=DISABLED)
+button_start.grid(row=0, column=1, padx=15, pady=(10,5), sticky='ew')
+
+# Progress label
+label_progress = Label(progress_frame, text=PROGRESS_STATUS, bootstyle="primary")
+label_progress.grid(row=1, column=0, columnspan=2, padx=15, pady=(5,10), sticky='ew')
 
 label_progress.after(1000, ensure_database_exists)
 
