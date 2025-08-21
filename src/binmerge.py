@@ -26,7 +26,8 @@
 
 
 from re import search, match
-from os.path import exists, join, dirname, getsize
+from os import access, R_OK
+from os.path import exists, join, dirname, isfile, getsize
 
 # Global variables
 error_log_path = None
@@ -66,6 +67,12 @@ class File:
 
 
 # **********************************************************************************************************
+class BinFilesMissingException(Exception):
+	pass
+# **********************************************************************************************************
+
+
+# **********************************************************************************************************
 def _sectors_to_cuestamp(sectors):
 	minutes = sectors / 4500
 	fields = sectors % 4500
@@ -77,7 +84,7 @@ def _sectors_to_cuestamp(sectors):
 
 # **********************************************************************************************************
 def _cuestamp_to_sectors(stamp):
-	m = match('(\d+):(\d+):(\d+)', stamp)
+	m = match(r'(\d+):(\d+):(\d+)', stamp)
 	minutes = int(m.group(1))
 	seconds = int(m.group(2))
 	fields = int(m.group(3))
@@ -126,8 +133,12 @@ def _merge_files(merged_filename, files):
 # Function to log basic error messages to a file
 def _log_error(error_type, error_message):
 	if error_log_path is not None:
-		with open(error_log_path, 'a') as error_log_file:
-			error_log_file.write(f'[{error_type}]: {error_message}\n')
+		try:
+			with open(error_log_path, 'a+') as error_log_file:
+				error_log_file.write(f'[{error_type}]: {error_message}\n')
+		except IOError:
+			with open(error_log_path, 'w') as error_log_file:
+				error_log_file.write(f'[{error_type}]: {error_message}\n')
 # **********************************************************************************************************
 
 
@@ -144,41 +155,57 @@ def read_cue_file(cue_path):
 	files = []
 	this_track = None
 	this_file = None
+	bin_files_missing = False
 
 	f = open(cue_path, 'r')
-	try:
-		for line in f:
-			m = search('FILE "?(.*?)"? BINARY', line)
-			if m:
-				this_file = File(join(dirname(cue_path), m.group(1)))
+	for line in f:
+		m = search(r'FILE "?(.*?)"? BINARY', line)
+		if m:
+			this_path = join(dirname(cue_path), m.group(1))
+			file_available = (isfile(this_path) or access(this_path, R_OK))
+
+			if not file_available:
+				this_path = join(dirname(cue_path), m.group(1).replace(' (Track 01)', ''))
+				file_available = (isfile(this_path) or access(this_path, R_OK))
+				if not file_available:
+					this_path = join(dirname(cue_path), m.group(1).replace(' (Track 1)', ''))
+					file_available = (isfile(this_path) or access(this_path, R_OK))
+
+			if not file_available:
+				bin_files_missing = True
+			else:
+				this_file = File(this_path)
 				files.append(this_file)
 
-			m = search('TRACK (\d+) ([^\s]*)', line)
-			if m:
-				this_track = Track(int(m.group(1)), m.group(2))
-				this_file.tracks.append(this_track)
+			continue
 
-			m = search('INDEX (\d+) (\d+:\d+:\d+)', line)
-			if m:
-				this_track.indexes.append({'id': int(m.group(1)), 'stamp': m.group(2), 'file_offset':_cuestamp_to_sectors(m.group(2))})
+		m = search(r'TRACK (\d+) ([^\s]*)', line)
+		if m and this_file:
+			this_track = Track(int(m.group(1)), m.group(2))
+			this_file.tracks.append(this_track)
+			continue
 
-		if len(files) == 1:
-			# only 1 file, assume splitting, calc sectors of each
-			next_item_offset = files[0].size // Track.globalBlocksize
-			for t in reversed(files[0].tracks):
-				t.sectors = next_item_offset - t.indexes[0]['file_offset']
-				next_item_offset = t.indexes[0]['file_offset']
-				
-	except:
-		_log_error('ERROR', f'Issue reading cue file: {cue_path}')
-	
+		m = search(r'INDEX (\d+) (\d+:\d+:\d+)', line)
+		if m and this_track:
+			this_track.indexes.append({'id': int(m.group(1)), 'stamp': m.group(2), 'file_offset': _cuestamp_to_sectors(m.group(2))})
+			continue
+
+	if bin_files_missing:
+		_log_error('ERROR', f'file does not exist: {line}')
+		return []
+
+	if len(files) == 1:
+		next_item_offset = files[0].size // Track.globalBlocksize
+		for t in reversed(files[0].tracks):
+			t.sectors = next_item_offset - t.indexes[0]["file_offset"]
+			next_item_offset = t.indexes[0]["file_offset"]
+
 	return files
 # **********************************************************************************************************
 
 
 # **********************************************************************************************************
 def start_bin_merge(cuefile, game_name, outdir):
-	
 	cue_map = read_cue_file(cuefile)
 	cuesheet = _gen_merged_cuesheet(game_name, cue_map)
 
@@ -196,6 +223,6 @@ def start_bin_merge(cuefile, game_name, outdir):
 
 	with open(new_cue_fn, 'w', newline='\r\n') as f:
 		f.write(cuesheet)
-	
+
 	return True
 # **********************************************************************************************************
