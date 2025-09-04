@@ -1,4 +1,4 @@
-# Psio-Assist-EX
+# psio-assist
 Python scripts with a basic GUI to prepare PlayStation 1 bin/cue games for use with a PSIO device.<br>
 Works on Linux, Mac and Windows.<br>
 
